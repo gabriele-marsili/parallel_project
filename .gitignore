@@ -1,0 +1,9 @@
+# Build artifacts
+**/bin/
+
+# OS files
+.DS_Store
+**/.DS_Store
+
+# Background shell
+.bg-shell/

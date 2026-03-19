@@ -1,0 +1,18 @@
+# Build artifacts
+bin/
+
+# LaTeX build files
+guide/*.aux
+guide/*.log
+guide/*.out
+guide/*.toc
+guide/*.fls
+guide/*.fdb_latexmk
+guide/*.synctex.gz
+
+# Results (generated on cluster)
+results/*.out
+results/*.err
+
+# OS files
+.DS_Store
