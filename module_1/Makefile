@@ -68,7 +68,7 @@ avx2: dirs
 	$(CXX) $(CXXFLAGS_AVX2) $(SRCDIR)/avx2.cpp -o $(BINDIR)/avx2
 
 datasets: dirs
-	$(CXX) $(CXXFLAGS_COMMON) -O2 $(SRCDIR)/datasets/dataset_creator.cpp -o $(BINDIR)/dataset_creator
+	$(CXX) $(CXXFLAGS_COMMON) -O2 $(SRCDIR)/dataset_creator.cpp -o $(BINDIR)/dataset_creator
 
 cuda: dirs
 	$(NVCC) $(NVCCFLAGS) $(SRCDIR)/cuda_kernel.cu -o $(BINDIR)/cuda_kernel

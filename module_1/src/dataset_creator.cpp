@@ -44,7 +44,7 @@ struct DatasetConfig {
     const char* filename;
 };
 
-// Dataset che coprono lo spazio sperimentale richiesto dal progetto:
+// Dataset di default:
 //  - piccolo per verifica element-wise
 //  - medio per iterazioni rapide
 //  - grande per timing stabili ("decine di milioni")
@@ -58,8 +58,6 @@ static const DatasetConfig DEFAULTS[] = {
     {   100'000'000, 42,  1'000'000, "100M_high_dup",   "ds_100M_dup1M.bin"},
 };
 static constexpr size_t NUM_DEFAULTS = sizeof(DEFAULTS) / sizeof(DEFAULTS[0]);
-
-// -- utilità filesystem POSIX (evita <filesystem>, non disponibile ovunque) --
 
 static bool file_exists(const std::string& path) {
     struct stat st;

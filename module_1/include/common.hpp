@@ -20,14 +20,14 @@
 
 /*
  * Tipi base per il progetto.
- * Uso un alias diverso da key_t per evitare il conflitto con POSIX key_t
+ * Viene utilizzato un alias diverso da key_t per evitare il conflitto con POSIX key_t
  * (sys/types.h definisce key_t come int32_t su macOS).
  */
 using spm_key_t = uint64_t;
 using part_t    = uint32_t;
 
 /*
- * Costante hash: Fibonacci hashing (Knuth, TAOCP Vol.3 §6.4).
+ * Costante hash: Fibonacci hashing.
  *
  * A = floor(2^64 / phi), dove phi = rapporto aureo.
  * E' dispari (necessario per invertibilità mod 2^64) e ha ottime
