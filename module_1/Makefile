@@ -23,19 +23,25 @@ NVCC      := nvcc
 # Common flags
 CXXFLAGS_COMMON := -std=c++20 -Wall -Wextra -I include
 
-# Optimization flags (node09 is AMD Zen-based, supports AVX2)
-OPT_FLAGS := -O3 -march=native -mavx2 -mfma
+# Detect architecture: AVX2 flags solo su x86_64
+ARCH := $(shell uname -m)
+ifeq ($(ARCH),x86_64)
+    OPT_FLAGS := -O3 -march=native -mavx2 -mfma
+    VEC_REPORT := -fopt-info-vec-optimized=results/vec_report_optimized.txt \
+                  -fopt-info-vec-missed=results/vec_report_missed.txt
+else
+    OPT_FLAGS := -O3
+    VEC_REPORT :=
+endif
 
 # Flags for baseline (NO auto-vectorization)
 CXXFLAGS_BASELINE := $(CXXFLAGS_COMMON) $(OPT_FLAGS) -fno-tree-vectorize
 
 # Flags for auto-vectorization version (with report)
 CXXFLAGS_AUTOVEC := $(CXXFLAGS_COMMON) $(OPT_FLAGS) -ftree-vectorize \
-                    -DAUTOVEC_ENABLED \
-                    -fopt-info-vec-optimized=results/vec_report_optimized.txt \
-                    -fopt-info-vec-missed=results/vec_report_missed.txt
+                    -DAUTOVEC_ENABLED $(VEC_REPORT)
 
-# Flags for AVX2 intrinsics version
+# Flags for AVX2 intrinsics version (solo su x86_64)
 CXXFLAGS_AVX2 := $(CXXFLAGS_COMMON) $(OPT_FLAGS)
 
 # CUDA flags

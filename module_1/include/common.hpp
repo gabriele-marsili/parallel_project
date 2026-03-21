@@ -19,49 +19,59 @@
 #include <unistd.h>
 
 /*
- * Tipi base per il progetto.
+ * Tipi base:
  * Viene utilizzato un alias diverso da key_t per evitare il conflitto con POSIX key_t
  * (sys/types.h definisce key_t come int32_t su macOS).
  */
-using spm_key_t = uint64_t;
-using part_t    = uint32_t;
+using spm_key_t = uint64_t; //chiave - 64bit 
+using part_t    = uint32_t; //id di partizione 
 
 /*
  * Costante hash: Fibonacci hashing.
  *
  * A = floor(2^64 / phi), dove phi = rapporto aureo.
- * E' dispari (necessario per invertibilità mod 2^64) e ha ottime
- * proprietà di bit-mixing grazie all'equidistribuzione di Weyl.
- * Vedi la guida LaTeX §2.1.4 per i dettagli sulla scelta.
+ * dispari (invertibilità mod 2^64) + proprietà di bit-mixing 
+ * 
  */
 static constexpr spm_key_t HASH_A = 0x9E3779B97F4A7C15ULL;
 
-/* h(k) = (A * k) >> (64 - log2(P)).  P deve essere potenza di 2. */
+/* h(k) = (A * k) >> (64 - log2(P)) con P potenza di 2. 
+    prende key k e restituisce un intero in [0,P), con P = 2^(64-shift)
+*/
 inline part_t hash_key(spm_key_t key, unsigned shift) {
+    //HASH_A * key troncato a 64 bit 
+    //shift => bit più significativi 
+    //cast statico tronca a 32 bit
     return static_cast<part_t>((HASH_A * key) >> shift);
 }
 
-// --------------------------------------------------------------------------
+
 // Generatore di chiavi deterministico (xoshiro256**).
 // Stato inizializzato con SplitMix64 a partire dal seed.
 // Se key_space > 0 le chiavi sono ridotte mod key_space (per controllare i duplicati).
-// --------------------------------------------------------------------------
 class KeyGenerator {
 public:
+    
+    //Riempie un array preallocato con N chiavi pseudo-casuali generate deterministicamente a partire dal seed
     static void generate(spm_key_t* keys, size_t N, uint64_t seed, uint64_t key_space = 0) {
-        uint64_t s[4];
-        for (int i = 0; i < 4; i++) {
-            seed += 0x9E3779B97F4A7C15ULL;
+        
+        //algo xoshiro256**
+        uint64_t s[4]; //stato (arr di 4 uint64_t)
+        for (int i = 0; i < 4; i++) { //init dello stato -> SplitMix64 per trasformare il seed 
+            seed += HASH_A; //incremento golden ratio 
             uint64_t z = seed;
+            //mixing (sfrutta xor-shift-multiply):
             z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
             z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
             z = z ^ (z >> 31);
             s[i] = z;
         }
-        for (size_t i = 0; i < N; i++) {
-            const uint64_t result = rotl(s[1] * 5, 7) * 9;
-            keys[i] = (key_space > 0) ? (result % key_space) : result;
 
+        for (size_t i = 0; i < N; i++) { //fase di "scrambler"
+            const uint64_t result = rotl(s[1] * 5, 7) * 9;
+            keys[i] = (key_space > 0) ? (result % key_space) : result; //controllo duplicati (per test hash fn con input ad alta duplicazione)
+
+            //aggiornamento dello stato:
             const uint64_t t = s[1] << 17;
             s[2] ^= s[0]; s[3] ^= s[1];
             s[1] ^= s[2]; s[0] ^= s[3];
@@ -71,19 +81,22 @@ public:
     }
 
 private:
-    static inline uint64_t rotl(uint64_t x, int k) {
+    //rotazione a sinistra di k bit (bit uscenti "rientrano" a destra)
+    static inline uint64_t rotl(uint64_t x, int k) { 
         return (x << k) | (x >> (64 - k));
     }
 };
 
-// --------------------------------------------------------------------------
+
 // Allocazione allineata a 32 byte (richiesto da AVX2 _mm256_load_*).
-// --------------------------------------------------------------------------
+// Usa posix_memalign perché std::aligned_alloc non è disponibile su macOS.
 inline void* aligned_alloc_wrapper(size_t alignment, size_t size) {
+    //arrotondamento per eccesso (es: size=100, aligned=32 => aligned_size = 128)
     size_t aligned_size = (size + alignment - 1) & ~(alignment - 1);
-    void* ptr = std::aligned_alloc(alignment, aligned_size);
-    if (!ptr) {
-        std::cerr << "aligned_alloc failed (size=" << size << ")\n";
+    void* ptr = nullptr;
+    int ret = posix_memalign(&ptr, alignment, aligned_size);
+    if (ret != 0 || !ptr) {
+        std::cerr << "posix_memalign failed (size=" << size << ")\n";
         std::exit(1);
     }
     return ptr;
@@ -94,10 +107,10 @@ T* alloc_aligned(size_t count, size_t alignment = 32) {
     return static_cast<T*>(aligned_alloc_wrapper(alignment, count * sizeof(T)));
 }
 
-// --------------------------------------------------------------------------
+
 // Checksum FNV-1a sull'array di output.
 // Serve per confrontare le implementazioni senza stampare N valori.
-// --------------------------------------------------------------------------
+
 inline uint64_t compute_checksum(const part_t* part_ids, size_t N) {
     uint64_t h = 0xCBF29CE484222325ULL;
     for (size_t i = 0; i < N; i++) {
@@ -107,7 +120,7 @@ inline uint64_t compute_checksum(const part_t* part_ids, size_t N) {
     return h;
 }
 
-// --------------------------------------------------------------------------
+
 // Caricamento dataset binari via mmap (zero-copy).
 //
 // Formato file (scritto da dataset_creator):
@@ -117,7 +130,7 @@ inline uint64_t compute_checksum(const part_t* part_ids, size_t N) {
 //   [24..31] key_space
 //   [32..39] riservato
 //   [40..]   N x uint64_t chiavi
-// --------------------------------------------------------------------------
+
 static constexpr uint64_t DATASET_MAGIC       = 0x53504D4B455953AAULL;
 static constexpr size_t   DATASET_HEADER_SIZE = 40;
 
@@ -185,9 +198,9 @@ inline void dataset_unload(DatasetView& view) {
     }
 }
 
-// --------------------------------------------------------------------------
+
 // Utilities per il benchmarking: mediana, stddev, throughput.
-// --------------------------------------------------------------------------
+
 struct BenchResult {
     double median_ms;
     double stddev_ms;

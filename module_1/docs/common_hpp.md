@@ -116,7 +116,8 @@ Rotazione a sinistra: sposta i bit di k posizioni a sinistra, i bit che "escono"
 ```cpp
 inline void* aligned_alloc_wrapper(size_t alignment, size_t size) {
     size_t aligned_size = (size + alignment - 1) & ~(alignment - 1);
-    void* ptr = std::aligned_alloc(alignment, aligned_size);
+    void* ptr = nullptr;
+    int ret = posix_memalign(&ptr, alignment, aligned_size);
     ...
 }
 
