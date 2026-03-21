@@ -4,68 +4,51 @@
 #include <cstdint>
 #include <cstddef>
 #include <vector>
-#include <random>
 #include <chrono>
-#include <numeric>
 #include <iostream>
 #include <iomanip>
 #include <algorithm>
 #include <cmath>
 #include <cassert>
 #include <cstring>
+#include <string>
 
-// ============================================================================
-// Type aliases
-// ============================================================================
-using spm_key_t   = uint64_t;    // 64-bit unsigned key
-using part_t  = uint32_t;    // partition identifier (fits in 32 bits easily)
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
-// ============================================================================
-// Hash function: Multiply-Shift (universal hashing)
-// ============================================================================
-//
-// WHY THIS HASH FUNCTION?
-//
-// From Ferragina's "Pearls of Algorithm Engineering" (Ch.8, §8.3.1):
-//   The multiply-add-shift scheme is a universal hash class that avoids
-//   expensive modulo-by-prime operations, using only multiplications and
-//   bit shifts on power-of-two table sizes.
-//
-//   h_{a}(k) = (a * k) >> (w - l)
-//   where w = 64 (word size), l = log2(P), a is an odd 64-bit constant.
-//
-// This is ideal for SIMD vectorization because:
-//   1. Only a multiply + right-shift per key (no division/modulo).
-//   2. When P is a power of two, the shift amount is a compile-time constant.
-//   3. The 64-bit multiply maps naturally to AVX2 _mm256_mul_epu32 pairs
-//      or can be done with full 64-bit multiply on scalar path.
-//   4. Provides provably good distribution (universal hashing guarantee).
-//
-// The constant A is chosen as a large odd number with good bit-mixing
-// properties. We use a value derived from the golden ratio * 2^64, which
-// is a well-known Fibonacci hashing constant (Knuth, TAOCP Vol.3).
-//
-// Fibonacci hashing constant: floor(2^64 / phi) where phi = (1+sqrt(5))/2
-// This is odd by construction and has excellent bit-spreading properties.
-//
-static constexpr spm_key_t HASH_A = 0x9E3779B97F4A7C15ULL; // Fibonacci/golden-ratio constant
+/*
+ * Tipi base per il progetto.
+ * Uso un alias diverso da key_t per evitare il conflitto con POSIX key_t
+ * (sys/types.h definisce key_t come int32_t su macOS).
+ */
+using spm_key_t = uint64_t;
+using part_t    = uint32_t;
 
-// Compute partition id for a single key.
-// P MUST be a power of two. The shift amount is (64 - log2(P)).
+/*
+ * Costante hash: Fibonacci hashing (Knuth, TAOCP Vol.3 §6.4).
+ *
+ * A = floor(2^64 / phi), dove phi = rapporto aureo.
+ * E' dispari (necessario per invertibilità mod 2^64) e ha ottime
+ * proprietà di bit-mixing grazie all'equidistribuzione di Weyl.
+ * Vedi la guida LaTeX §2.1.4 per i dettagli sulla scelta.
+ */
+static constexpr spm_key_t HASH_A = 0x9E3779B97F4A7C15ULL;
+
+/* h(k) = (A * k) >> (64 - log2(P)).  P deve essere potenza di 2. */
 inline part_t hash_key(spm_key_t key, unsigned shift) {
     return static_cast<part_t>((HASH_A * key) >> shift);
 }
 
-// ============================================================================
-// Deterministic key generation from a seed (reproducible).
-// Uses a fast xoshiro256** PRNG for high throughput.
-// ============================================================================
+// --------------------------------------------------------------------------
+// Generatore di chiavi deterministico (xoshiro256**).
+// Stato inizializzato con SplitMix64 a partire dal seed.
+// Se key_space > 0 le chiavi sono ridotte mod key_space (per controllare i duplicati).
+// --------------------------------------------------------------------------
 class KeyGenerator {
 public:
-    // Generate N keys deterministically from seed into a pre-allocated buffer.
-    // key_space: if > 0, keys are reduced modulo key_space to control duplicates.
     static void generate(spm_key_t* keys, size_t N, uint64_t seed, uint64_t key_space = 0) {
-        // SplitMix64 to seed the state
         uint64_t s[4];
         for (int i = 0; i < 4; i++) {
             seed += 0x9E3779B97F4A7C15ULL;
@@ -75,16 +58,13 @@ public:
             z = z ^ (z >> 31);
             s[i] = z;
         }
-        // xoshiro256** generation
         for (size_t i = 0; i < N; i++) {
             const uint64_t result = rotl(s[1] * 5, 7) * 9;
             keys[i] = (key_space > 0) ? (result % key_space) : result;
 
             const uint64_t t = s[1] << 17;
-            s[2] ^= s[0];
-            s[3] ^= s[1];
-            s[1] ^= s[2];
-            s[0] ^= s[3];
+            s[2] ^= s[0]; s[3] ^= s[1];
+            s[1] ^= s[2]; s[0] ^= s[3];
             s[2] ^= t;
             s[3] = rotl(s[3], 45);
         }
@@ -96,15 +76,14 @@ private:
     }
 };
 
-// ============================================================================
-// Aligned memory allocation helpers (32-byte alignment for AVX2)
-// ============================================================================
+// --------------------------------------------------------------------------
+// Allocazione allineata a 32 byte (richiesto da AVX2 _mm256_load_*).
+// --------------------------------------------------------------------------
 inline void* aligned_alloc_wrapper(size_t alignment, size_t size) {
-    // Round up size to multiple of alignment (required by some aligned_alloc implementations)
     size_t aligned_size = (size + alignment - 1) & ~(alignment - 1);
     void* ptr = std::aligned_alloc(alignment, aligned_size);
     if (!ptr) {
-        std::cerr << "ERROR: aligned_alloc failed for size=" << size << std::endl;
+        std::cerr << "aligned_alloc failed (size=" << size << ")\n";
         std::exit(1);
     }
     return ptr;
@@ -115,79 +94,69 @@ T* alloc_aligned(size_t count, size_t alignment = 32) {
     return static_cast<T*>(aligned_alloc_wrapper(alignment, count * sizeof(T)));
 }
 
-// ============================================================================
-// Verification: checksum over the output array.
-// Uses a simple but effective hash-based checksum to detect mismatches
-// without printing the full array.
-// ============================================================================
+// --------------------------------------------------------------------------
+// Checksum FNV-1a sull'array di output.
+// Serve per confrontare le implementazioni senza stampare N valori.
+// --------------------------------------------------------------------------
 inline uint64_t compute_checksum(const part_t* part_ids, size_t N) {
-    uint64_t h = 0xCBF29CE484222325ULL; // FNV-1a offset basis
+    uint64_t h = 0xCBF29CE484222325ULL;
     for (size_t i = 0; i < N; i++) {
         h ^= static_cast<uint64_t>(part_ids[i]);
-        h *= 0x100000001B3ULL; // FNV-1a prime
+        h *= 0x100000001B3ULL;
     }
     return h;
 }
 
-// ============================================================================
-// Dataset loading via mmap (zero-copy, read-only)
-// ============================================================================
-// Binary format (written by dataset_creator):
-//   Bytes 0-7:   magic 0x53504D4B455953AA
-//   Bytes 8-15:  N (uint64_t)
-//   Bytes 16-23: seed (uint64_t)
-//   Bytes 24-31: key_space (uint64_t)
-//   Bytes 32-39: reserved
-//   Bytes 40+:   N × uint64_t keys
-// ============================================================================
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
-static constexpr uint64_t DATASET_MAGIC = 0x53504D4B455953AAULL;
+// --------------------------------------------------------------------------
+// Caricamento dataset binari via mmap (zero-copy).
+//
+// Formato file (scritto da dataset_creator):
+//   [0..7]   magic  0x53504D4B455953AA
+//   [8..15]  N
+//   [16..23] seed
+//   [24..31] key_space
+//   [32..39] riservato
+//   [40..]   N x uint64_t chiavi
+// --------------------------------------------------------------------------
+static constexpr uint64_t DATASET_MAGIC       = 0x53504D4B455953AAULL;
 static constexpr size_t   DATASET_HEADER_SIZE = 40;
 
 struct DatasetView {
-    const spm_key_t* keys;     // pointer into mmap region (read-only, do NOT free)
+    const spm_key_t* keys;
     size_t           N;
     uint64_t         seed;
     uint64_t         key_space;
-    void*            mmap_base; // for munmap
+    void*            mmap_base;
     size_t           mmap_len;
 };
 
-// Load a dataset file via mmap. Returns true on success.
-// The returned DatasetView.keys points directly into the mapped region.
-// Call dataset_unload() when done.
 inline bool dataset_load(const char* path, DatasetView& view) {
     int fd = open(path, O_RDONLY);
     if (fd < 0) {
-        std::cerr << "ERROR: cannot open dataset " << path << std::endl;
+        std::cerr << "cannot open dataset: " << path << "\n";
         return false;
     }
-
     struct stat st;
     if (fstat(fd, &st) != 0) { close(fd); return false; }
     size_t file_size = static_cast<size_t>(st.st_size);
 
     if (file_size < DATASET_HEADER_SIZE) {
-        std::cerr << "ERROR: dataset too small" << std::endl;
+        std::cerr << "dataset file too small\n";
         close(fd); return false;
     }
 
     void* base = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
     close(fd);
     if (base == MAP_FAILED) {
-        std::cerr << "ERROR: mmap failed for " << path << std::endl;
+        std::cerr << "mmap failed: " << path << "\n";
         return false;
     }
 
-    // Parse header
     const uint64_t* hdr = static_cast<const uint64_t*>(base);
     if (hdr[0] != DATASET_MAGIC) {
-        std::cerr << "ERROR: invalid magic in " << path << std::endl;
-        munmap(base, file_size); return false;
+        std::cerr << "bad magic in " << path << "\n";
+        munmap(base, file_size);
+        return false;
     }
 
     view.N         = static_cast<size_t>(hdr[1]);
@@ -198,14 +167,13 @@ inline bool dataset_load(const char* path, DatasetView& view) {
     view.mmap_base = base;
     view.mmap_len  = file_size;
 
-    // Sanity check file size
     size_t expected = DATASET_HEADER_SIZE + view.N * sizeof(spm_key_t);
     if (file_size != expected) {
-        std::cerr << "ERROR: file size mismatch in " << path
-                  << " (expected " << expected << ", got " << file_size << ")" << std::endl;
-        munmap(base, file_size); return false;
+        std::cerr << "size mismatch in " << path
+                  << " (expected " << expected << ", got " << file_size << ")\n";
+        munmap(base, file_size);
+        return false;
     }
-
     return true;
 }
 
@@ -217,9 +185,9 @@ inline void dataset_unload(DatasetView& view) {
     }
 }
 
-// ============================================================================
-// Timing utilities
-// ============================================================================
+// --------------------------------------------------------------------------
+// Utilities per il benchmarking: mediana, stddev, throughput.
+// --------------------------------------------------------------------------
 struct BenchResult {
     double median_ms;
     double stddev_ms;
@@ -228,20 +196,24 @@ struct BenchResult {
 };
 
 inline BenchResult benchmark(const std::vector<double>& times_ms, size_t N) {
-    BenchResult r;
+    BenchResult r{};
     r.N = N;
+
     auto sorted = times_ms;
     std::sort(sorted.begin(), sorted.end());
     size_t mid = sorted.size() / 2;
     r.median_ms = (sorted.size() % 2 == 0)
                   ? (sorted[mid - 1] + sorted[mid]) / 2.0
                   : sorted[mid];
+
     double mean = 0;
     for (auto t : sorted) mean += t;
-    mean /= sorted.size();
+    mean /= static_cast<double>(sorted.size());
+
     double var = 0;
     for (auto t : sorted) var += (t - mean) * (t - mean);
-    r.stddev_ms = std::sqrt(var / sorted.size());
+    r.stddev_ms = std::sqrt(var / static_cast<double>(sorted.size()));
+
     r.throughput_Mkeys_per_s = (static_cast<double>(N) / 1e6) / (r.median_ms / 1e3);
     return r;
 }
@@ -249,10 +221,12 @@ inline BenchResult benchmark(const std::vector<double>& times_ms, size_t N) {
 inline void print_result(const std::string& label, const BenchResult& r) {
     std::cout << std::left << std::setw(30) << label
               << "  N=" << std::setw(12) << r.N
-              << "  median=" << std::fixed << std::setprecision(3) << std::setw(10) << r.median_ms << " ms"
-              << "  stddev=" << std::setprecision(3) << std::setw(8) << r.stddev_ms << " ms"
-              << "  throughput=" << std::setprecision(1) << r.throughput_Mkeys_per_s << " Mkeys/s"
-              << std::endl;
+              << "  median=" << std::fixed << std::setprecision(3)
+              << std::setw(10) << r.median_ms << " ms"
+              << "  stddev=" << std::setprecision(3)
+              << std::setw(8) << r.stddev_ms << " ms"
+              << "  throughput=" << std::setprecision(1)
+              << r.throughput_Mkeys_per_s << " Mkeys/s\n";
 }
 
 #endif // COMMON_HPP
