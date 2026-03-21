@@ -1,20 +1,13 @@
-// ============================================================================
-// plain.cpp — Plain C++ partition mapping kernel (no intrinsics)
-// ============================================================================
-//
-// This file provides the plain (scalar) implementation of the partition
-// mapping kernel. It is compiled TWICE:
-//   1. With auto-vectorization DISABLED  (-fno-tree-vectorize) → baseline
-//   2. With auto-vectorization ENABLED   (-O3 -march=native)   → autovec
-//
-// The same source, two binaries: this guarantees identical semantics.
-// ============================================================================
+//Plain C++ partition mapping kernel (no intrinsics)
+// -> plain (scalar) implementation of the partition mapping kernel. 
+// It is compiled TWICE:
+//   1. With auto-vectorization DISABLED  (-fno-tree-vectorize) => baseline
+//   2. With auto-vectorization ENABLED   (-O3 -march=native)   => autovec
+
 
 #include "common.hpp"
 
-// ----------------------------------------------------------------------------
-// The hot kernel: maps each key to a partition id.
-//
+
 // DESIGN CHOICES FOR AUTO-VECTORIZATION FRIENDLINESS:
 //   - Simple loop with unit stride (keys[i] accessed sequentially)
 //   - No function calls inside the loop (hash is inline)

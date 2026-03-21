@@ -1,6 +1,9 @@
 # Build artifacts
 bin/
 
+# Generated datasets (large binary files, regenerable)
+data/*.bin
+
 # LaTeX build files
 guide/*.aux
 guide/*.log

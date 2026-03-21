@@ -51,9 +51,9 @@ RESDIR  := results
 # Targets
 # ============================================================================
 
-.PHONY: all clean baseline autovec avx2 cuda dirs
+.PHONY: all clean baseline autovec avx2 cuda dirs datasets
 
-all: dirs baseline autovec avx2
+all: dirs baseline autovec avx2 datasets
 
 dirs:
 	@mkdir -p $(BINDIR) $(RESDIR)
@@ -67,11 +67,17 @@ autovec: dirs
 avx2: dirs
 	$(CXX) $(CXXFLAGS_AVX2) $(SRCDIR)/avx2.cpp -o $(BINDIR)/avx2
 
+datasets: dirs
+	$(CXX) $(CXXFLAGS_COMMON) -O2 $(SRCDIR)/datasets/dataset_creator.cpp -o $(BINDIR)/dataset_creator
+
 cuda: dirs
 	$(NVCC) $(NVCCFLAGS) $(SRCDIR)/cuda_kernel.cu -o $(BINDIR)/cuda_kernel
 
 clean:
 	rm -rf $(BINDIR) $(RESDIR)/*.txt
+
+cleandata:
+	rm -rf data/*.bin
 
 # ============================================================================
 # Convenience: run quick correctness test (small N)
@@ -99,3 +105,11 @@ test_bench: all
 	@echo ""
 	@echo "--- AVX2 ---"
 	$(BINDIR)/avx2 100000000 256
+
+# Generate default datasets (idempotent — skips existing)
+generate_data: datasets
+	$(BINDIR)/dataset_creator
+
+# List existing datasets
+list_data: datasets
+	$(BINDIR)/dataset_creator --list

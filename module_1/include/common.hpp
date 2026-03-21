@@ -130,6 +130,94 @@ inline uint64_t compute_checksum(const part_t* part_ids, size_t N) {
 }
 
 // ============================================================================
+// Dataset loading via mmap (zero-copy, read-only)
+// ============================================================================
+// Binary format (written by dataset_creator):
+//   Bytes 0-7:   magic 0x53504D4B455953AA
+//   Bytes 8-15:  N (uint64_t)
+//   Bytes 16-23: seed (uint64_t)
+//   Bytes 24-31: key_space (uint64_t)
+//   Bytes 32-39: reserved
+//   Bytes 40+:   N × uint64_t keys
+// ============================================================================
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+static constexpr uint64_t DATASET_MAGIC = 0x53504D4B455953AAULL;
+static constexpr size_t   DATASET_HEADER_SIZE = 40;
+
+struct DatasetView {
+    const spm_key_t* keys;     // pointer into mmap region (read-only, do NOT free)
+    size_t           N;
+    uint64_t         seed;
+    uint64_t         key_space;
+    void*            mmap_base; // for munmap
+    size_t           mmap_len;
+};
+
+// Load a dataset file via mmap. Returns true on success.
+// The returned DatasetView.keys points directly into the mapped region.
+// Call dataset_unload() when done.
+inline bool dataset_load(const char* path, DatasetView& view) {
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        std::cerr << "ERROR: cannot open dataset " << path << std::endl;
+        return false;
+    }
+
+    struct stat st;
+    if (fstat(fd, &st) != 0) { close(fd); return false; }
+    size_t file_size = static_cast<size_t>(st.st_size);
+
+    if (file_size < DATASET_HEADER_SIZE) {
+        std::cerr << "ERROR: dataset too small" << std::endl;
+        close(fd); return false;
+    }
+
+    void* base = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+    if (base == MAP_FAILED) {
+        std::cerr << "ERROR: mmap failed for " << path << std::endl;
+        return false;
+    }
+
+    // Parse header
+    const uint64_t* hdr = static_cast<const uint64_t*>(base);
+    if (hdr[0] != DATASET_MAGIC) {
+        std::cerr << "ERROR: invalid magic in " << path << std::endl;
+        munmap(base, file_size); return false;
+    }
+
+    view.N         = static_cast<size_t>(hdr[1]);
+    view.seed      = hdr[2];
+    view.key_space = hdr[3];
+    view.keys      = reinterpret_cast<const spm_key_t*>(
+                         static_cast<const char*>(base) + DATASET_HEADER_SIZE);
+    view.mmap_base = base;
+    view.mmap_len  = file_size;
+
+    // Sanity check file size
+    size_t expected = DATASET_HEADER_SIZE + view.N * sizeof(spm_key_t);
+    if (file_size != expected) {
+        std::cerr << "ERROR: file size mismatch in " << path
+                  << " (expected " << expected << ", got " << file_size << ")" << std::endl;
+        munmap(base, file_size); return false;
+    }
+
+    return true;
+}
+
+inline void dataset_unload(DatasetView& view) {
+    if (view.mmap_base && view.mmap_base != MAP_FAILED) {
+        munmap(view.mmap_base, view.mmap_len);
+        view.mmap_base = nullptr;
+        view.keys = nullptr;
+    }
+}
+
+// ============================================================================
 // Timing utilities
 // ============================================================================
 struct BenchResult {
