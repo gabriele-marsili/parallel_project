@@ -1,37 +1,23 @@
 /*
  * avx2.cpp => Partition mapping con intrinsics AVX2
  *
- * OSS: AVX2 ha solo _mm256_mul_epu32 che moltiplica solo i 32 bit bassi di ogni lane a 64 bit
+ * AVX2 non ha _mm256_mullo_epi64 (disponibile solo da AVX-512).
+ * L'unica primitiva per moltiplicazione intera è _mm256_mul_epu32
+ * che moltiplica i 32 bit bassi di ogni lane a 64 bit.
  *
- * -> prodotto completo (A * k) mod 2^64 ottenuto decomponendo in:
+ * Il prodotto completo A*k mod 2^64 si decompone in:
  *   A*k = A_lo*k_lo + (A_lo*k_hi + A_hi*k_lo) << 32
- * dove A_hi*k_hi << 64 va in overflow e viene ignorato
+ * (il termine A_hi*k_hi << 64 trabocca e viene scartato)
  *
- * -> 4 chiavi per ogni iterazione (4 x 64bit = 256bit).
- * -> partition id (32 bit) impacchettati con permutevar8x32 e scritti come 4 uint32_t contigui
+ * Servono 3x vpmuludq + shift + add per emulare una mul64.
+ * A_hi è pre-calcolato fuori dal loop per evitare shift ripetuti.
+ *
+ * -> 4 chiavi per iterazione (4 × 64 bit = 256 bit)
+ * -> partition id (32 bit) estratti con vpermd e scritti come 4 uint32 contigui
  */
 
 #include "common.hpp"
 #include <immintrin.h>
-
-//moltiplicazione 64-bit su 4 lane usando primitive a 32 bit
-static inline __m256i mul64_avx2(__m256i a, __m256i k)
-{
-    __m256i lo_lo = _mm256_mul_epu32(a, k); // a_lo * k_lo (full 64-bit)
-
-    //shift logico a destra di 32: sposta i 32 bit alti nella posizione dei 32 bit bassi
-    __m256i a_hi = _mm256_srli_epi64(a, 32);
-    __m256i k_hi = _mm256_srli_epi64(k, 32);
-
-    __m256i a_lo_k_hi = _mm256_mul_epu32(a, k_hi); // cross term 1
-    __m256i a_hi_k_lo = _mm256_mul_epu32(a_hi, k); // cross term 2
-
-    //somma i due termini incrociati e shifta a sinistra di 32 (=> moltiplicazione per 2^32)
-    __m256i cross = _mm256_add_epi64(a_lo_k_hi, a_hi_k_lo);
-    cross = _mm256_slli_epi64(cross, 32);
-
-    return _mm256_add_epi64(lo_lo, cross); //64 bit bassi di A*k per ognuna delle 4 lane
-}
 
 /**
  * Kernel fn principale
@@ -41,37 +27,51 @@ void partition_map_avx2(const spm_key_t *__restrict__ keys,
                         size_t N,
                         unsigned shift)
 {
-
-    //carica la costante HASH_A in tutte e 4 le lane a 64 bit del registro:
+    // costante hash nelle 4 lane a 64 bit
     const __m256i va = _mm256_set1_epi64x(static_cast<int64_t>(HASH_A));
-    const size_t simd_end = N - (N % 4); //(loop SIMD processa 4 chiavi alla volta)
+    // pre-calcola A_hi (32 bit alti) — evita uno shift per iterazione
+    const __m256i va_hi = _mm256_srli_epi64(va, 32);
+    const size_t simd_end = N - (N % 4);
 
-    //indici per raccogliere i 32-bit bassi da ogni lane 64-bit
+    // indici per estrarre i 32 bit bassi da ogni lane 64-bit
     const __m256i perm_idx = _mm256_setr_epi32(0, 2, 4, 6, 1, 3, 5, 7);
 
     for (size_t i = 0; i < simd_end; i += 4)
     {
-        //carica 4 chiavi consecutive (4 × 64 bit = 256 bit) dalla memoria al registro (indirizzo allineato a 32byte garantito da alloc_aligned)
+        // carica 4 chiavi (aligned load, 32B alignment garantito da alloc_aligned)
         __m256i vk = _mm256_load_si256(reinterpret_cast<const __m256i *>(&keys[i]));
-        
-        //calcola i 4 prodotti e poi shifta a destra per ottenere i partition id:
-        __m256i prod = mul64_avx2(va, vk);
+
+        // emulazione di A*k a 64 bit con 3 moltiplicazioni a 32 bit:
+        __m256i lo_lo = _mm256_mul_epu32(va, vk);      // A_lo * k_lo → 64 bit
+        __m256i k_hi  = _mm256_srli_epi64(vk, 32);     // estrai k_hi
+        __m256i cross1 = _mm256_mul_epu32(va, k_hi);    // A_lo * k_hi
+        __m256i cross2 = _mm256_mul_epu32(va_hi, vk);   // A_hi * k_lo
+        // somma i cross terms e shifta << 32
+        __m256i cross = _mm256_add_epi64(cross1, cross2);
+        cross = _mm256_slli_epi64(cross, 32);
+        __m256i prod = _mm256_add_epi64(lo_lo, cross);
+
+        // shift a destra per ottenere il partition id
         __m256i vhash = _mm256_srli_epi64(prod, shift);
 
-        //pack 4x64 -> 4x32: i partition id stanno nei 32 bit bassi di ogni lane
+        // pack 4×64 → 4×32: estrai i 32 bit bassi di ogni lane via permutazione
         __m256i packed = _mm256_permutevar8x32_epi32(vhash, perm_idx);
-        
-        //vengono estratti i 128 bit bassi dal reg a 256 bit e vengono scritti in memoria (unaligned)
+        // scrivi i 4 partition id (128 bit bassi)
         _mm_storeu_si128(reinterpret_cast<__m128i *>(&part_ids[i]),
                          _mm256_castsi256_si128(packed));
     }
 
-    //coda scalare per gli elementi rimanenti (N % 4)
+    // coda scalare per gli ultimi N%4 elementi
     for (size_t i = simd_end; i < N; i++)
         part_ids[i] = static_cast<part_t>((HASH_A * keys[i]) >> shift);
 }
 
-//kernel scalare di riferimento per il confronto di correttezza
+// kernel scalare di riferimento — compilato senza auto-vettorizzazione
+// (#pragma optimize) per confronto corretto: senza questo, GCC lo
+// vettorizzerebbe con SSE xmm (stessa decomposizione mul32) e lo speedup
+// risulterebbe confrontato contro una versione già semi-vettorizzata.
+#pragma GCC push_options
+#pragma GCC optimize ("no-tree-vectorize")
 static void partition_map_scalar(const spm_key_t *__restrict__ keys,
                                  part_t *__restrict__ part_ids,
                                  size_t N,
@@ -80,6 +80,7 @@ static void partition_map_scalar(const spm_key_t *__restrict__ keys,
     for (size_t i = 0; i < N; i++)
         part_ids[i] = static_cast<part_t>((HASH_A * keys[i]) >> shift);
 }
+#pragma GCC pop_options
 
 int main(int argc, char *argv[])
 {
