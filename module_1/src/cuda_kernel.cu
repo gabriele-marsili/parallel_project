@@ -1,12 +1,10 @@
 /*
- * cuda_kernel.cu -- Kernel CUDA per partition mapping (task opzionale).
+ * cuda_kernel.cu -- Kernel CUDA per partition mapping
  *
- * Ogni thread mappa una chiave alla sua partizione.
- * Tempi riportati separatamente: H->D transfer, kernel, D->H transfer.
- * Correttezza verificata contro il riferimento scalare su CPU.
+ * Ogni thread mappa una chiave alla sua partizione
+ * Tempi riportati separatamente: H->D transfer, kernel, D->H transfer
+ * Correttezza verificata contro il riferimento scalare su CPU
  *
- * La GPU è una NVIDIA A30 (compute capability 8.0) su node09.
- * Usiamo pinned memory (cudaMallocHost) per velocizzare i trasferimenti PCIe.
  */
 
 #include <cstdint>
@@ -29,7 +27,7 @@
     }                                                                         \
 } while (0)
 
-__global__
+__global__; //=> fn lanciata da CPU ma eseguita in GPU (non può ritornare void)
 void partition_map_cuda(const uint64_t* __restrict__ keys,
                         uint32_t*       __restrict__ part_ids,
                         size_t N, uint64_t hash_a, unsigned shift) {

@@ -59,7 +59,15 @@ RESDIR  := results
 
 .PHONY: all clean baseline autovec avx2 cuda dirs datasets
 
+# Su x86_64 (cluster): compila tutto incluso AVX2
+# Su arm64 (macOS): compila solo baseline, autovec, datasets
+ifeq ($(ARCH),x86_64)
 all: dirs baseline autovec avx2 datasets
+else
+all: dirs baseline autovec datasets
+	@echo ""
+	@echo "NOTA: avx2 e cuda richiedono il cluster (x86_64 + GPU NVIDIA)"
+endif
 
 dirs:
 	@mkdir -p $(BINDIR) $(RESDIR)
@@ -71,19 +79,30 @@ autovec: dirs
 	$(CXX) $(CXXFLAGS_AUTOVEC) $(SRCDIR)/plain.cpp -o $(BINDIR)/plain_autovec
 
 avx2: dirs
+ifeq ($(ARCH),x86_64)
 	$(CXX) $(CXXFLAGS_AVX2) $(SRCDIR)/avx2.cpp -o $(BINDIR)/avx2
+else
+	@echo "SKIP avx2: richiede x86_64 (sei su $(ARCH))"
+endif
 
 datasets: dirs
 	$(CXX) $(CXXFLAGS_COMMON) -O2 $(SRCDIR)/dataset_creator.cpp -o $(BINDIR)/dataset_creator
 
 cuda: dirs
-	$(NVCC) $(NVCCFLAGS) $(SRCDIR)/cuda_kernel.cu -o $(BINDIR)/cuda_kernel
+	@if command -v $(NVCC) > /dev/null 2>&1; then \
+		$(NVCC) $(NVCCFLAGS) $(SRCDIR)/cuda_kernel.cu -o $(BINDIR)/cuda_kernel; \
+	else \
+		echo "SKIP cuda: nvcc non trovato (serve il cluster con GPU NVIDIA)"; \
+	fi
 
 clean:
 	rm -rf $(BINDIR) $(RESDIR)/*.txt
 
 cleandata:
 	rm -rf data/*.bin
+
+cleanplots:
+	rm -rf $(RESDIR)/plots $(RESDIR)/*.csv
 
 # ============================================================================
 # Convenience: run quick correctness test (small N)
@@ -119,3 +138,20 @@ generate_data: datasets
 # List existing datasets
 list_data: datasets
 	$(BINDIR)/dataset_creator --list
+
+# ============================================================================
+# Analysis: parse results and generate plots
+# ============================================================================
+.PHONY: parse plots analysis
+
+parse:
+	python3 analysis/parse_results.py
+
+plots: parse
+	python3 analysis/plot_results.py
+
+plots-pdf: parse
+	python3 analysis/plot_results.py --format pdf
+
+analysis: plots
+	@echo "Grafici generati in $(RESDIR)/plots/"

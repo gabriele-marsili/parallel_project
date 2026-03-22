@@ -1,94 +1,110 @@
 /*
- * avx2.cpp -- Partition mapping con intrinsics AVX2.
+ * avx2.cpp => Partition mapping con intrinsics AVX2
  *
- * Il problema principale: AVX2 non ha una moltiplicazione 64x64 bit nativa.
- * _mm256_mul_epu32 moltiplica solo i 32 bit bassi di ogni lane a 64 bit.
+ * OSS: AVX2 ha solo _mm256_mul_epu32 che moltiplica solo i 32 bit bassi di ogni lane a 64 bit
  *
- * Per ottenere il prodotto completo (A * k) mod 2^64 decomponiamo:
+ * -> prodotto completo (A * k) mod 2^64 ottenuto decomponendo in:
  *   A*k = A_lo*k_lo + (A_lo*k_hi + A_hi*k_lo) << 32
- * Il termine A_hi*k_hi << 64 va in overflow e si ignora.
+ * dove A_hi*k_hi << 64 va in overflow e viene ignorato
  *
- * Processiamo 4 chiavi per iterazione (4 x 64bit = 256bit).
- * I partition id (32 bit) vengono impacchettati con permutevar8x32
- * e scritti come 4 uint32_t contigui.
+ * -> 4 chiavi per ogni iterazione (4 x 64bit = 256bit).
+ * -> partition id (32 bit) impacchettati con permutevar8x32 e scritti come 4 uint32_t contigui
  */
 
 #include "common.hpp"
 #include <immintrin.h>
 
-// Moltiplicazione 64-bit su 4 lane usando primitive a 32 bit.
-static inline __m256i mul64_avx2(__m256i a, __m256i k) {
-    __m256i lo_lo = _mm256_mul_epu32(a, k);          // a_lo * k_lo (full 64-bit)
+//moltiplicazione 64-bit su 4 lane usando primitive a 32 bit
+static inline __m256i mul64_avx2(__m256i a, __m256i k)
+{
+    __m256i lo_lo = _mm256_mul_epu32(a, k); // a_lo * k_lo (full 64-bit)
 
+    //shift logico a destra di 32: sposta i 32 bit alti nella posizione dei 32 bit bassi
     __m256i a_hi = _mm256_srli_epi64(a, 32);
     __m256i k_hi = _mm256_srli_epi64(k, 32);
 
-    __m256i a_lo_k_hi = _mm256_mul_epu32(a, k_hi);   // cross term 1
-    __m256i a_hi_k_lo = _mm256_mul_epu32(a_hi, k);   // cross term 2
+    __m256i a_lo_k_hi = _mm256_mul_epu32(a, k_hi); // cross term 1
+    __m256i a_hi_k_lo = _mm256_mul_epu32(a_hi, k); // cross term 2
 
+    //somma i due termini incrociati e shifta a sinistra di 32 (=> moltiplicazione per 2^32)
     __m256i cross = _mm256_add_epi64(a_lo_k_hi, a_hi_k_lo);
     cross = _mm256_slli_epi64(cross, 32);
 
-    return _mm256_add_epi64(lo_lo, cross);
+    return _mm256_add_epi64(lo_lo, cross); //64 bit bassi di A*k per ognuna delle 4 lane
 }
 
-void partition_map_avx2(const spm_key_t* __restrict__ keys,
-                        part_t*          __restrict__ part_ids,
+/**
+ * Kernel fn principale
+ */
+void partition_map_avx2(const spm_key_t *__restrict__ keys,
+                        part_t *__restrict__ part_ids,
                         size_t N,
-                        unsigned shift) {
+                        unsigned shift)
+{
 
+    //carica la costante HASH_A in tutte e 4 le lane a 64 bit del registro:
     const __m256i va = _mm256_set1_epi64x(static_cast<int64_t>(HASH_A));
-    const size_t  simd_end = N - (N % 4);
+    const size_t simd_end = N - (N % 4); //(loop SIMD processa 4 chiavi alla volta)
 
-    // indici per raccogliere i 32-bit bassi da ogni lane 64-bit
+    //indici per raccogliere i 32-bit bassi da ogni lane 64-bit
     const __m256i perm_idx = _mm256_setr_epi32(0, 2, 4, 6, 1, 3, 5, 7);
 
-    for (size_t i = 0; i < simd_end; i += 4) {
-        __m256i vk    = _mm256_load_si256(reinterpret_cast<const __m256i*>(&keys[i]));
-        __m256i prod  = mul64_avx2(va, vk);
+    for (size_t i = 0; i < simd_end; i += 4)
+    {
+        //carica 4 chiavi consecutive (4 × 64 bit = 256 bit) dalla memoria al registro (indirizzo allineato a 32byte garantito da alloc_aligned)
+        __m256i vk = _mm256_load_si256(reinterpret_cast<const __m256i *>(&keys[i]));
+        
+        //calcola i 4 prodotti e poi shifta a destra per ottenere i partition id:
+        __m256i prod = mul64_avx2(va, vk);
         __m256i vhash = _mm256_srli_epi64(prod, shift);
 
-        // pack 4x64 -> 4x32: i partition id stanno nei 32 bit bassi di ogni lane
+        //pack 4x64 -> 4x32: i partition id stanno nei 32 bit bassi di ogni lane
         __m256i packed = _mm256_permutevar8x32_epi32(vhash, perm_idx);
-        _mm_storeu_si128(reinterpret_cast<__m128i*>(&part_ids[i]),
+        
+        //vengono estratti i 128 bit bassi dal reg a 256 bit e vengono scritti in memoria (unaligned)
+        _mm_storeu_si128(reinterpret_cast<__m128i *>(&part_ids[i]),
                          _mm256_castsi256_si128(packed));
     }
 
-    // coda scalare per gli elementi rimanenti (N % 4)
+    //coda scalare per gli elementi rimanenti (N % 4)
     for (size_t i = simd_end; i < N; i++)
         part_ids[i] = static_cast<part_t>((HASH_A * keys[i]) >> shift);
 }
 
-// Riferimento scalare per il confronto di correttezza
-static void partition_map_scalar(const spm_key_t* __restrict__ keys,
-                                 part_t*          __restrict__ part_ids,
+//kernel scalare di riferimento per il confronto di correttezza
+static void partition_map_scalar(const spm_key_t *__restrict__ keys,
+                                 part_t *__restrict__ part_ids,
                                  size_t N,
-                                 unsigned shift) {
+                                 unsigned shift)
+{
     for (size_t i = 0; i < N; i++)
         part_ids[i] = static_cast<part_t>((HASH_A * keys[i]) >> shift);
 }
 
-int main(int argc, char* argv[]) {
-    if (argc < 3) {
+int main(int argc, char *argv[])
+{
+    if (argc < 3)
+    {
         std::cerr << "Usage: " << argv[0] << " <N> <P> [seed] [key_space] [reps]\n";
         return 1;
     }
 
-    const size_t   N         = std::stoull(argv[1]);
-    const uint32_t P         = std::stoul(argv[2]);
-    const uint64_t seed      = (argc > 3) ? std::stoull(argv[3]) : 42;
+    const size_t N = std::stoull(argv[1]);
+    const uint32_t P = std::stoul(argv[2]);
+    const uint64_t seed = (argc > 3) ? std::stoull(argv[3]) : 42;
     const uint64_t key_space = (argc > 4) ? std::stoull(argv[4]) : 0;
-    const int      reps      = (argc > 5) ? std::stoi(argv[5])   : 11;
+    const int reps = (argc > 5) ? std::stoi(argv[5]) : 11;
 
-    if (P == 0 || (P & (P - 1)) != 0) {
+    if (P == 0 || (P & (P - 1)) != 0)
+    {
         std::cerr << "P deve essere potenza di 2 (ricevuto " << P << ")\n";
         return 1;
     }
     const unsigned shift = 64 - __builtin_ctz(P);
 
-    spm_key_t* keys        = alloc_aligned<spm_key_t>(N);
-    part_t*    part_avx2   = alloc_aligned<part_t>(N);
-    part_t*    part_scalar = alloc_aligned<part_t>(N);
+    spm_key_t *keys = alloc_aligned<spm_key_t>(N);
+    part_t *part_avx2 = alloc_aligned<part_t>(N);
+    part_t *part_scalar = alloc_aligned<part_t>(N);
 
     KeyGenerator::generate(keys, N, seed, key_space);
 
@@ -97,11 +113,14 @@ int main(int argc, char* argv[]) {
     partition_map_avx2(keys, part_avx2, N, shift);
 
     uint64_t cksum_scalar = compute_checksum(part_scalar, N);
-    uint64_t cksum_avx2   = compute_checksum(part_avx2, N);
+    uint64_t cksum_avx2 = compute_checksum(part_avx2, N);
 
-    if (cksum_scalar != cksum_avx2) {
-        for (size_t i = 0; i < N; i++) {
-            if (part_scalar[i] != part_avx2[i]) {
+    if (cksum_scalar != cksum_avx2)
+    {
+        for (size_t i = 0; i < N; i++)
+        {
+            if (part_scalar[i] != part_avx2[i])
+            {
                 std::cerr << "MISMATCH i=" << i << " key=" << keys[i]
                           << " scalar=" << part_scalar[i]
                           << " avx2=" << part_avx2[i] << "\n";
@@ -109,13 +128,16 @@ int main(int argc, char* argv[]) {
             }
         }
         std::cerr << "AVX2 output diverso dallo scalare!\n";
-        std::free(keys); std::free(part_avx2); std::free(part_scalar);
+        std::free(keys);
+        std::free(part_avx2);
+        std::free(part_scalar);
         return 1;
     }
     std::cout << "Correttezza: OK (checksum=0x"
               << std::hex << cksum_avx2 << std::dec << ")\n";
 
-    if (N <= 32) {
+    if (N <= 32)
+    {
         for (size_t i = 0; i < N; i++)
             std::cout << "  keys[" << i << "]=" << keys[i]
                       << "  scalar=" << part_scalar[i]
@@ -130,7 +152,8 @@ int main(int argc, char* argv[]) {
     t_avx2.reserve(reps);
     t_scalar.reserve(reps);
 
-    for (int r = 0; r < reps; r++) {
+    for (int r = 0; r < reps; r++)
+    {
         auto t0 = std::chrono::high_resolution_clock::now();
         partition_map_avx2(keys, part_avx2, N, shift);
         auto t1 = std::chrono::high_resolution_clock::now();
@@ -138,14 +161,15 @@ int main(int argc, char* argv[]) {
     }
 
     partition_map_scalar(keys, part_scalar, N, shift); // warmup
-    for (int r = 0; r < reps; r++) {
+    for (int r = 0; r < reps; r++)
+    {
         auto t0 = std::chrono::high_resolution_clock::now();
         partition_map_scalar(keys, part_scalar, N, shift);
         auto t1 = std::chrono::high_resolution_clock::now();
         t_scalar.push_back(std::chrono::duration<double, std::milli>(t1 - t0).count());
     }
 
-    auto res_avx2   = benchmark(t_avx2, N);
+    auto res_avx2 = benchmark(t_avx2, N);
     auto res_scalar = benchmark(t_scalar, N);
 
     print_result("scalar (riferimento)", res_scalar);
@@ -155,9 +179,11 @@ int main(int argc, char* argv[]) {
     std::cout << "  P=" << P << " shift=" << shift
               << " seed=" << seed << " key_space=" << key_space << "\n";
 
-    if (P <= 1024) {
+    if (P <= 1024)
+    {
         std::vector<uint64_t> counts(P, 0);
-        for (size_t i = 0; i < N; i++) counts[part_avx2[i]]++;
+        for (size_t i = 0; i < N; i++)
+            counts[part_avx2[i]]++;
         uint64_t mn = *std::min_element(counts.begin(), counts.end());
         uint64_t mx = *std::max_element(counts.begin(), counts.end());
         double exp = static_cast<double>(N) / P;

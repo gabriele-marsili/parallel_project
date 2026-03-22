@@ -25,8 +25,8 @@
 #include <dirent.h>
 #include <sys/stat.h>
 
-static constexpr uint64_t MAGIC       = 0x53504D4B455953AAULL;
-static constexpr size_t   HEADER_SIZE = 40;
+static constexpr uint64_t MAGIC = 0x53504D4B455953AAULL;
+static constexpr size_t HEADER_SIZE = 40; //5 campi × 8 byte = 40 byte 
 
 struct DatasetHeader {
     uint64_t magic;
@@ -37,14 +37,14 @@ struct DatasetHeader {
 };
 
 struct DatasetConfig {
-    size_t      N;
-    uint64_t    seed;
-    uint64_t    key_space;
+    size_t N;
+    uint64_t seed;
+    uint64_t key_space;
     const char* name;
     const char* filename;
 };
 
-// Dataset di default:
+// Dataset di default (seed fisso):
 //  - piccolo per verifica element-wise
 //  - medio per iterazioni rapide
 //  - grande per timing stabili ("decine di milioni")
@@ -59,6 +59,8 @@ static const DatasetConfig DEFAULTS[] = {
 };
 static constexpr size_t NUM_DEFAULTS = sizeof(DEFAULTS) / sizeof(DEFAULTS[0]);
 
+// -- Utility fns (posix -> per portabilità): ----
+
 static bool file_exists(const std::string& path) {
     struct stat st;
     return stat(path.c_str(), &st) == 0;
@@ -71,7 +73,7 @@ static size_t file_size(const std::string& path) {
 }
 
 static void mkdirs(const std::string& path) {
-    mkdir(path.c_str(), 0755);  // ignora errore se esiste già
+    mkdir(path.c_str(), 0755);// ignora errore se esiste già
 }
 
 static std::string basename_of(const std::string& path) {
@@ -79,13 +81,23 @@ static std::string basename_of(const std::string& path) {
     return (pos == std::string::npos) ? path : path.substr(pos + 1);
 }
 
-// -- I/O dataset --
+// -- operazioni I/O sul dataset --
 
+/**
+ * alloca N*8 byte allineati a 32 byte 
+ * genera le chiavi (con xoshiro256** => deterministico)
+ * apre il file in modalità binaria e scrive header ed array di chiavi 
+ * chiude e verifica, poi libera la memoria
+ */
 static bool write_dataset(const std::string& path, size_t N,
                            uint64_t seed, uint64_t key_space) {
+    
+    //allocazione mem alligned:
     spm_key_t* keys = alloc_aligned<spm_key_t>(N);
+    //generazione chiavi:
     KeyGenerator::generate(keys, N, seed, key_space);
 
+    //apertura file in modalità binaria
     std::ofstream ofs(path, std::ios::binary);
     if (!ofs) {
         std::cerr << "  errore: impossibile aprire " << path << "\n";
@@ -93,39 +105,48 @@ static bool write_dataset(const std::string& path, size_t N,
         return false;
     }
 
+    //creazione header:
     DatasetHeader hdr{};
-    hdr.magic     = MAGIC;
-    hdr.N         = static_cast<uint64_t>(N);
-    hdr.seed      = seed;
+    hdr.magic = MAGIC;
+    hdr.N = static_cast<uint64_t>(N);
+    hdr.seed = seed;
     hdr.key_space = key_space;
-    hdr.reserved  = 0;
+    hdr.reserved = 0;
 
+    //scrittura file:
     ofs.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
     ofs.write(reinterpret_cast<const char*>(keys), N * sizeof(spm_key_t));
     ofs.close();
     std::free(keys);
 
-    return bool(ofs);
+    return bool(ofs); //true => nessun errore (sfrutta conversione di std::ofstrem)
 }
 
+/*
+controlla se un file esistente corrisponde ai parametri attesi
+=> apre il file, legge header, verifica magic, N, seed, key space e controlla che la dim del file sia 40 + N*8 byte
+*/
 static bool validate_dataset(const std::string& path, size_t N,
                               uint64_t seed, uint64_t key_space) {
     std::ifstream ifs(path, std::ios::binary);
     if (!ifs) return false;
 
+    //creazione e validazione dell'header:
     DatasetHeader hdr{};
     ifs.read(reinterpret_cast<char*>(&hdr), sizeof(hdr));
-    if (!ifs)                                    return false;
-    if (hdr.magic != MAGIC)                      return false;
-    if (hdr.N != static_cast<uint64_t>(N))       return false;
-    if (hdr.seed != seed)                        return false;
-    if (hdr.key_space != key_space)              return false;
+    if (!ifs) return false;
+    if (hdr.magic != MAGIC) return false;
+    if (hdr.N != static_cast<uint64_t>(N)) return false;
+    if (hdr.seed != seed) return false;
+    if (hdr.key_space != key_space) return false;
 
+    //controllo sulla dim del file
     auto expected = static_cast<std::streamoff>(HEADER_SIZE + N * sizeof(spm_key_t));
     ifs.seekg(0, std::ios::end);
     return ifs.tellg() == expected;
 }
 
+//utility fn per stampare info dataset
 static void print_dataset_info(const std::string& path) {
     std::ifstream ifs(path, std::ios::binary);
     if (!ifs) { std::cout << "  " << path << "  [NON TROVATO]\n"; return; }
@@ -145,8 +166,7 @@ static void print_dataset_info(const std::string& path) {
               << "  " << std::fixed << std::setprecision(1) << size_mb << " MB\n";
 }
 
-// -- generazione nome automatico per dataset custom --
-
+//generazione nome automatico per dataset custom 
 static std::string make_auto_path(const std::string& dir, size_t N,
                                    uint64_t seed, uint64_t key_space) {
     std::string n_str;

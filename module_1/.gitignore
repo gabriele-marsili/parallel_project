@@ -13,9 +13,12 @@ guide/*.fls
 guide/*.fdb_latexmk
 guide/*.synctex.gz
 
-# Results (generated on cluster)
+# Results (generated on cluster, regenerable)
 results/*.out
 results/*.err
+results/*.txt
+results/*.csv
+results/plots/
 
 # OS files
 .DS_Store

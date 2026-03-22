@@ -91,8 +91,15 @@ private:
 // Allocazione allineata a 32 byte (richiesto da AVX2 _mm256_load_*).
 // Usa posix_memalign perché std::aligned_alloc non è disponibile su macOS.
 inline void* aligned_alloc_wrapper(size_t alignment, size_t size) {
-    //arrotondamento per eccesso (es: size=100, aligned=32 => aligned_size = 128)
+    // posix_memalign richiede che size sia multiplo di alignment -> arrotondiamo per eccesso.
+    // Es con alignment=32:
+    //   size=100 -> 100+31=131, 131 & ~31 = 131 & 0x...E0 = 128
+    //   size=64  -> 64+31=95,   95  & ~31 = 95  & 0x...E0 = 64  
+    // ~(alignment-1) azzera i bit bassi, forzando il multiplo.
     size_t aligned_size = (size + alignment - 1) & ~(alignment - 1);
+
+    // posix_memalign scrive in ptr l'indirizzo allocato, garantendo che l'indirizzo sia multiplo di alignment
+    // => 0 in caso di successo / codice errore altrimenti   
     void* ptr = nullptr;
     int ret = posix_memalign(&ptr, alignment, aligned_size);
     if (ret != 0 || !ptr) {
@@ -102,27 +109,26 @@ inline void* aligned_alloc_wrapper(size_t alignment, size_t size) {
     return ptr;
 }
 
+// Wrapper tipizzato: alloca quantity elementi di tipo T, allineati a 32 byte
+// Uso: spm_key_t* keys = alloc_aligned<spm_key_t>(N)
 template<typename T>
-T* alloc_aligned(size_t count, size_t alignment = 32) {
-    return static_cast<T*>(aligned_alloc_wrapper(alignment, count * sizeof(T)));
+T* alloc_aligned(size_t quantity, size_t alignment = 32) {
+    return static_cast<T*>(aligned_alloc_wrapper(alignment, quantity * sizeof(T)));
 }
 
 
-// Checksum FNV-1a sull'array di output.
-// Serve per confrontare le implementazioni senza stampare N valori.
-
+// Checksum FNV-1a sull'array di output per confrontare le implementazioni senza stampare N valori
 inline uint64_t compute_checksum(const part_t* part_ids, size_t N) {
     uint64_t h = 0xCBF29CE484222325ULL;
-    for (size_t i = 0; i < N; i++) {
+    for (size_t i = 0; i < N; i++) { //per ogni elemento XOR con l'elemento, poi moltiplica per il prime FNV
         h ^= static_cast<uint64_t>(part_ids[i]);
-        h *= 0x100000001B3ULL;
+        h *= 0x100000001B3ULL; //prime FNV => checksum sensibile all'ordine e posizione degli el.
     }
     return h;
 }
 
 
-// Caricamento dataset binari via mmap (zero-copy).
-//
+// Caricamento dataset binari via mmap (zero-copy)
 // Formato file (scritto da dataset_creator):
 //   [0..7]   magic  0x53504D4B455953AA
 //   [8..15]  N
@@ -131,24 +137,27 @@ inline uint64_t compute_checksum(const part_t* part_ids, size_t N) {
 //   [32..39] riservato
 //   [40..]   N x uint64_t chiavi
 
-static constexpr uint64_t DATASET_MAGIC       = 0x53504D4B455953AAULL;
-static constexpr size_t   DATASET_HEADER_SIZE = 40;
+static constexpr uint64_t DATASET_MAGIC = 0x53504D4B455953AAULL;
+static constexpr size_t DATASET_HEADER_SIZE = 40;
 
 struct DatasetView {
-    const spm_key_t* keys;
-    size_t           N;
-    uint64_t         seed;
-    uint64_t         key_space;
-    void*            mmap_base;
-    size_t           mmap_len;
+    const spm_key_t* keys; //punta nel file mappato
+    size_t N;
+    uint64_t seed;
+    uint64_t key_space;
+    void* mmap_base; //usato per munmap
+    size_t mmap_len;
 };
 
+//carica il dataset usando mmap
 inline bool dataset_load(const char* path, DatasetView& view) {
-    int fd = open(path, O_RDONLY);
+    int fd = open(path, O_RDONLY); //apertura in readonly
     if (fd < 0) {
         std::cerr << "cannot open dataset: " << path << "\n";
         return false;
     }
+    
+    //ottenimento della dim del file:
     struct stat st;
     if (fstat(fd, &st) != 0) { close(fd); return false; }
     size_t file_size = static_cast<size_t>(st.st_size);
@@ -158,6 +167,8 @@ inline bool dataset_load(const char* path, DatasetView& view) {
         close(fd); return false;
     }
 
+    //mmap mappa il file in mem virtuale => base punta al contenuto del file 
+    // -> uso di demand paging da parte del kernel del SO 
     void* base = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
     close(fd);
     if (base == MAP_FAILED) {
@@ -165,6 +176,7 @@ inline bool dataset_load(const char* path, DatasetView& view) {
         return false;
     }
 
+    //parsing dell'header: 
     const uint64_t* hdr = static_cast<const uint64_t*>(base);
     if (hdr[0] != DATASET_MAGIC) {
         std::cerr << "bad magic in " << path << "\n";
@@ -172,14 +184,15 @@ inline bool dataset_load(const char* path, DatasetView& view) {
         return false;
     }
 
-    view.N         = static_cast<size_t>(hdr[1]);
-    view.seed      = hdr[2];
+    view.N = static_cast<size_t>(hdr[1]);
+    view.seed = hdr[2];
     view.key_space = hdr[3];
-    view.keys      = reinterpret_cast<const spm_key_t*>(
-                         static_cast<const char*>(base) + DATASET_HEADER_SIZE);
+    view.keys = reinterpret_cast<const spm_key_t*>(static_cast<const char*>(base) + DATASET_HEADER_SIZE); //chiavi partono da offset 40
     view.mmap_base = base;
     view.mmap_len  = file_size;
 
+    //OSS: uso di mmap per: zero copy + lazy loading + shared mem
+    
     size_t expected = DATASET_HEADER_SIZE + view.N * sizeof(spm_key_t);
     if (file_size != expected) {
         std::cerr << "size mismatch in " << path
@@ -190,6 +203,7 @@ inline bool dataset_load(const char* path, DatasetView& view) {
     return true;
 }
 
+//rilascia la mappatura => puntatori non più validi
 inline void dataset_unload(DatasetView& view) {
     if (view.mmap_base && view.mmap_base != MAP_FAILED) {
         munmap(view.mmap_base, view.mmap_len);
@@ -202,35 +216,43 @@ inline void dataset_unload(DatasetView& view) {
 // Utilities per il benchmarking: mediana, stddev, throughput.
 
 struct BenchResult {
-    double median_ms;
-    double stddev_ms;
-    double throughput_Mkeys_per_s;
+    double median_ms; //tempo mediano
+    double stddev_ms; //deviazione standard
+    double throughput_Mkeys_per_s; //Mkeys = milioni di chiavi al s 
     size_t N;
 };
 
+/**
+ *  Ordina i tempi, prende la medianat, calcola media, varianza e throughput 
+*/
 inline BenchResult benchmark(const std::vector<double>& times_ms, size_t N) {
     BenchResult r{};
     r.N = N;
 
     auto sorted = times_ms;
-    std::sort(sorted.begin(), sorted.end());
-    size_t mid = sorted.size() / 2;
+    std::sort(sorted.begin(), sorted.end()); //ordina i tempi
+    size_t mid = sorted.size() / 2; //el di mezzo
+    //calcolo mediana come media tra due elementi di mezzo se size è pari / el di mezzo altrimenti 
     r.median_ms = (sorted.size() % 2 == 0)
                   ? (sorted[mid - 1] + sorted[mid]) / 2.0
                   : sorted[mid];
 
+    //calcolo della media:
     double mean = 0;
     for (auto t : sorted) mean += t;
     mean /= static_cast<double>(sorted.size());
 
+    //calcolo della varianza e deviazione standard:
     double var = 0;
     for (auto t : sorted) var += (t - mean) * (t - mean);
     r.stddev_ms = std::sqrt(var / static_cast<double>(sorted.size()));
 
+    //calcolo del throughput (in Mkeys/s):
     r.throughput_Mkeys_per_s = (static_cast<double>(N) / 1e6) / (r.median_ms / 1e3);
     return r;
 }
 
+//utility fn per stampare i risultati
 inline void print_result(const std::string& label, const BenchResult& r) {
     std::cout << std::left << std::setw(30) << label
               << "  N=" << std::setw(12) << r.N
