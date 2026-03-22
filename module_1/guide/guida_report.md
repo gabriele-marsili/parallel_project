@@ -210,11 +210,12 @@ Indica brevemente:
 
 ### 4b. Tabella riassuntiva (N=200M, P=256)
 
-| Implementazione   | Mediana (ms) | Stddev | Throughput (Mkeys/s) | Speedup |
-|-------------------|-------------|--------|---------------------|---------|
-| Baseline (no-vec) | 184.4       | 5.1    | 1084                | 1.00×   |
-| Auto-vectorized   | 178.9       | 5.3    | 1118                | 1.03×   |
-| AVX2 intrinsics   | 189.2       | 4.7    | 1057                | 0.97×   |
+| Implementazione   | Mediana (ms) | Stddev | Throughput (Mkeys/s) | Speedup | BW (GB/s) |
+|-------------------|-------------|--------|---------------------|---------|-----------|
+| Baseline (no-vec) | 182.3       | 4.9    | 1097                | 1.00×   | 13.2      |
+| Auto-vectorized   | 179.6       | 4.8    | 1113                | 1.02×   | 13.4      |
+| AVX2 intrinsics   | 192.9       | 4.5    | 1037                | 0.95×   | 12.4      |
+| *(Ceiling: copia pura)* | *164.2* | — | *1218*             | *1.11×* | *14.6*    |
 
 Includi i grafici più significativi (scegli 2-3 tra quelli generati):
 - `01_throughput_vs_N.png` — mostra che le tre curve sono quasi
@@ -259,24 +260,36 @@ t_exec ≥ max(t_comp, t_mem) = 160 ms    → MEMORY BOUND
 Il tempo osservato (~184 ms) è coerente con `t_mem` stimato,
 confermando che il bottleneck è la bandwidth DRAM.
 
-#### Passo 3: spiega perché la vettorizzazione non aiuta
+#### Passo 3: spiega perché AVX2 intrinsics è più lento
 
 Dalla lezione L7&8 slide 7: *"Performance improvement (speedup) is
-roughly vector_width × efficiency"*.
+roughly vector_width × efficiency"*. Con 4 lane a 256 bit il fattore
+teorico è 4×, ma l'efficiency è bassissima perché il kernel è quasi
+memory-bound.
 
-La vettorizzazione riduce `t_comp` (processando 2 o 4 chiavi per ciclo),
-ma `t_comp` **non è il bottleneck**. Il bottleneck è `t_mem`, che dipende
-dalla bandwidth DRAM e non cambia con la vettorizzazione. Quindi:
+Per quantificare, un micro-benchmark di "copia pura" (read 8B + write 4B,
+zero compute) mostra il ceiling effettivo della BW a ~14.4 GB/s su node09.
+Lo scalare raggiunge 13.4 GB/s (93% del ceiling), confermando che il
+margine sfruttabile è solo ~7%.
 
-- **Autovec** (2 chiavi/ciclo via SSE): `t_comp` si dimezza → ~50 ms,
-  ma `t_exec = max(50, 160) = 160 ms` — nessun miglioramento
-  (l'~3% osservato viene dal minor loop overhead, non dal parallelismo SIMD)
+L'**autovec GCC** guadagna ~2-3% perché vettorizza a 128-bit (SSE) con
+la stessa decomposizione mul32 dello scalare, riducendo il loop overhead.
 
-- **AVX2** (4 chiavi/ciclo): `t_comp` diventa ~25 ms, ma il tempo totale
-  resta ~160 ms. In più, la decomposizione mul64 aggiunge istruzioni
-  extra (~11 SIMD vs 1 IMUL) che consumano risorse di esecuzione e
-  generano micro-ops aggiuntive, causando un leggero overhead che
-  spiega il rallentamento del ~3%.
+L'**AVX2 intrinsics** (3× `vpmuludq`) è **5% più lento** dello scalare
+perché la decomposizione mul64 richiede 3 moltiplicazioni + 2 add + 2
+shift per 4 chiavi, saturando le porte di esecuzione della CPU e
+rallentando l'emissione (issue) delle istruzioni di load/store. In un
+kernel quasi memory-bound, qualsiasi compute aggiuntivo che compete per
+le porte di issue riduce la bandwidth effettiva.
+
+A conferma, una variante a **2 mul** (che omette un cross-term,
+sacrificando l'identità bit-per-bit dell'output) raggiunge 14.1 GB/s
+(98% del ceiling), dimostrando che il problema è specificamente il
+**numero di istruzioni mul**, non il paradigma SIMD in sé.
+
+Nota: la traccia richiede output identico tra implementazioni
+(*"It must produce identical output"*), quindi la versione 3-mul
+è obbligatoria nonostante il costo.
 
 #### Passo 4: verifica con la bandwidth
 
