@@ -27,7 +27,7 @@
     }                                                                         \
 } while (0)
 
-__global__; //=> fn lanciata da CPU ma eseguita in GPU (non può ritornare void)
+__global__ //=> fn lanciata da CPU ma eseguita in GPU (non può ritornare un valore)
 void partition_map_cuda(const uint64_t* __restrict__ keys,
                         uint32_t*       __restrict__ part_ids,
                         size_t N, uint64_t hash_a, unsigned shift) {

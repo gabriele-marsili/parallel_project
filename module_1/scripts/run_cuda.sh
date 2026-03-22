@@ -9,11 +9,10 @@
 #SBATCH --job-name=spm_m1_cuda
 #SBATCH --output=results/cuda_%j.out
 #SBATCH --error=results/cuda_%j.err
-#SBATCH --partition=gpu-exclusive
+#SBATCH --partition=gpu-excl
 #SBATCH --nodelist=node09
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --gres=gpu:1
 #SBATCH --time=00:15:00
 
 echo "============================================"
@@ -23,8 +22,14 @@ echo "Date: $(date)"
 echo "GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo 'N/A')"
 echo "============================================"
 
-# Build CUDA
-make cuda
+# CUDA runtime path (nvcc su node09)
+export PATH=/usr/local/cuda-12.3/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/cuda-12.3/lib64:$LD_LIBRARY_PATH
+
+# Compila CUDA (nvcc disponibile solo su node09)
+echo "Compilazione CUDA..."
+nvcc -std=c++17 -O3 -I include -gencode arch=compute_80,code=sm_80 src/cuda_kernel.cu -o bin/cuda_kernel
+echo "Compilazione completata: $?"
 
 OUTFILE="results/bench_cuda.txt"
 echo "# SPM Module 1 CUDA Benchmark Results" > $OUTFILE

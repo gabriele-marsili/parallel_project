@@ -91,11 +91,13 @@ def sweep_N_data(df):
 
 
 def sweep_P_data(df):
-    """Estrae dati per lo sweep P: key_space=0, N fisso, deduplicati."""
+    """Estrae dati per lo sweep P: key_space=0, N con più valori di P distinti."""
     sweep = df[df['key_space'] == 0].copy()
     if sweep.empty:
         return sweep, 0
-    main_N = sweep['N'].max()
+    # Trova la N che ha il maggior numero di P distinti (= lo sweep P)
+    p_counts = sweep.groupby('N')['P'].nunique()
+    main_N = p_counts.idxmax()
     sweep = sweep[sweep['N'] == main_N]
     if len(sweep['P'].unique()) < 3:
         return pd.DataFrame(), main_N

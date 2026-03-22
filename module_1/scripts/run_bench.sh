@@ -12,7 +12,7 @@
 #SBATCH --job-name=spm_m1_bench
 #SBATCH --output=results/bench_%j.out
 #SBATCH --error=results/bench_%j.err
-#SBATCH --partition=gpu-exclusive
+#SBATCH --partition=gpu-excl
 #SBATCH --nodelist=node09
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
