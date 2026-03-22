@@ -100,6 +100,11 @@ def plot_throughput_vs_N(df, outdir, fmt):
     main_P = sweep['P'].mode().iloc[0] if not sweep['P'].mode().empty else 256
     sweep = sweep[sweep['P'] == main_P]
 
+    # deduplica: una riga per (impl, N) — media se ci sono ripetizioni
+    sweep = sweep.groupby(['impl', 'N'], as_index=False).agg({
+        'median_ms': 'mean', 'stddev_ms': 'mean', 'throughput_Mkeys_s': 'mean'
+    })
+
     fig, ax = plt.subplots()
     for impl in ['baseline', 'autovec', 'avx2']:
         sub = sweep[sweep['impl'] == impl].sort_values('N')
@@ -156,6 +161,11 @@ def plot_speedup_vs_N(df, outdir, fmt):
 
     main_P = sweep['P'].mode().iloc[0] if not sweep['P'].mode().empty else 256
     sweep = sweep[sweep['P'] == main_P]
+
+    # deduplica: una riga per (impl, N)
+    sweep = sweep.groupby(['impl', 'N'], as_index=False).agg({
+        'median_ms': 'mean', 'stddev_ms': 'mean', 'throughput_Mkeys_s': 'mean'
+    })
 
     base = sweep[sweep['impl'] == 'baseline'][['N', 'median_ms']].rename(
         columns={'median_ms': 'base_ms'})
@@ -231,6 +241,11 @@ def plot_time_vs_N(df, outdir, fmt):
     main_P = sweep['P'].mode().iloc[0] if not sweep['P'].mode().empty else 256
     sweep = sweep[sweep['P'] == main_P]
 
+    # deduplica: una riga per (impl, N)
+    sweep = sweep.groupby(['impl', 'N'], as_index=False).agg({
+        'median_ms': 'mean', 'stddev_ms': 'mean', 'throughput_Mkeys_s': 'mean'
+    })
+
     fig, ax = plt.subplots()
     for impl in ['baseline', 'autovec', 'avx2']:
         sub = sweep[sweep['impl'] == impl].sort_values('N')
@@ -261,6 +276,11 @@ def plot_distribution(df, outdir, fmt):
     main_P = sweep['P'].mode().iloc[0] if not sweep['P'].mode().empty else 256
     sweep = sweep[sweep['P'] == main_P]
 
+    # deduplica: una riga per (impl, N)
+    sweep = sweep.groupby(['impl', 'N'], as_index=False).agg({
+        'dist_ratio': 'mean'
+    })
+
     fig, ax = plt.subplots()
     for impl in ['baseline', 'autovec', 'avx2']:
         sub = sweep[sweep['impl'] == impl].sort_values('N')
@@ -283,35 +303,51 @@ def plot_distribution(df, outdir, fmt):
 
 def plot_keyspace_sensitivity(df, outdir, fmt):
     """Grafico 7: throughput al variare del key_space (tasso di duplicati)."""
-    sweep = df[df['key_space'].notna()].copy()
-    # servono almeno 3 valori diversi di key_space
-    if sweep.empty or len(sweep['key_space'].unique()) < 3:
+    # Filtra solo l'esperimento che varia key_space:
+    # cerchiamo righe dove 'experiment' contiene 'key_space' oppure
+    # isoliamo le combinazioni (N, P) che compaiono con key_space diversi da 0.
+    has_ks = df[df['key_space'] > 0]
+    if has_ks.empty:
         return
 
+    # prendi N e P dell'esperimento key_space
+    exp_N = has_ks['N'].mode().iloc[0]
+    exp_P = has_ks['P'].mode().iloc[0]
+
+    # tutte le righe con quella N e P (includendo key_space=0 come riferimento)
+    sweep = df[(df['N'] == exp_N) & (df['P'] == exp_P)].copy()
+
+    # una sola riga per (impl, key_space): prendi la prima occorrenza
+    sweep = sweep.drop_duplicates(subset=['impl', 'key_space'], keep='last')
+
+    if len(sweep['key_space'].unique()) < 3:
+        return
+
+    # costruiamo le x-labels una volta sola dai key_space unici
+    ks_vals = sorted(sweep['key_space'].unique())
+    ks_labels = []
+    for ks in ks_vals:
+        if ks == 0:
+            ks_labels.append('full\n(2⁶⁴)')
+        else:
+            ks_labels.append(format_N(int(ks)))
+    ks_to_x = {ks: i for i, ks in enumerate(ks_vals)}
+
     fig, ax = plt.subplots()
-    for impl in ['baseline', 'avx2']:
+    for impl in ['baseline', 'autovec', 'avx2']:
         sub = sweep[sweep['impl'] == impl].sort_values('key_space')
         if sub.empty:
             continue
-        # key_space=0 va mostrato come "full" sull'asse
-        labels = []
-        for ks in sub['key_space']:
-            if ks == 0:
-                labels.append('full\n(2⁶⁴)')
-            else:
-                labels.append(format_N(int(ks)))
-
-        ax.plot(range(len(sub)), sub['throughput_Mkeys_s'],
+        x_pos = [ks_to_x[ks] for ks in sub['key_space']]
+        ax.plot(x_pos, sub['throughput_Mkeys_s'].values,
                 marker=MARKERS[impl], color=COLORS[impl],
                 label=LABELS[impl], linewidth=2, markersize=7)
-        ax.set_xticks(range(len(sub)))
-        ax.set_xticklabels(labels)
 
+    ax.set_xticks(range(len(ks_vals)))
+    ax.set_xticklabels(ks_labels)
     ax.set_xlabel('Key space (universo chiavi)')
     ax.set_ylabel('Throughput (Mkeys/s)')
-    N_val = sweep['N'].iloc[0]
-    P_val = sweep['P'].iloc[0]
-    ax.set_title(f'Sensibilità ai duplicati (N={format_N(int(N_val))}, P={int(P_val)})')
+    ax.set_title(f'Sensibilità ai duplicati (N={format_N(int(exp_N))}, P={int(exp_P)})')
     ax.legend()
     save_fig(fig, outdir, '07_keyspace_sensitivity', fmt)
 

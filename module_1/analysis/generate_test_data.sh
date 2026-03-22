@@ -56,6 +56,8 @@ for KS in 0 1000 100000 10000000 1000000000; do
     echo "--- N=$N P=$P key_space=$KS ---" | tee -a "$OUTFILE"
     echo "[baseline]" | tee -a "$OUTFILE"
     bin/plain_baseline $N $P $SEED $KS $REPS | tee -a "$OUTFILE"
+    echo "[autovec]" | tee -a "$OUTFILE"
+    bin/plain_autovec $N $P $SEED $KS $REPS | tee -a "$OUTFILE"
 done
 
 echo ""
