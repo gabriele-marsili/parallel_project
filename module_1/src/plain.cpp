@@ -5,11 +5,17 @@
  *   - baseline: con -fno-tree-vectorize
  *   - autovec:  con -O3 -march=native (vettorizzazione abilitata)
  *
+ * Hash function: XOR-fold + Fibonacci multiply-shift a 32 bit.
+ * h(k) = ((k_lo ^ k_hi) * A32) >> shift32
+ *
  * Il loop è scritto in modo da favorire l'auto-vectorization di GCC:
  *   - stride unitario, nessuna dipendenza tra iterazioni
- *   - nessuna function call nel body (HASH_A*key >> shift è tutto inline)
+ *   - nessuna function call nel body (solo XOR + MUL32 + SHIFT)
  *   - __restrict__ per escludere aliasing
  *   - conteggio iterazioni noto all'ingresso del loop
+ *
+ * Con questa hash, GCC può auto-vettorizzare usando _mm256_mullo_epi32
+ * (nativo AVX2) invece di dover emulare una mul64 con 3x vpmuludq.
  */
 
 #include "common.hpp"
@@ -18,7 +24,6 @@
  * Kernel fn:
  * const spm_key_t* __restrict__ keys =  puntatore arr di input
  * part_t* __restrict__ part_ids = puntatore ad arr di output
- *
  */
 void partition_map(const spm_key_t *__restrict__ keys,
                    part_t *__restrict__ part_ids,
@@ -27,18 +32,21 @@ void partition_map(const spm_key_t *__restrict__ keys,
 {
     for (size_t i = 0; i < N; i++)
     {
-        // HASH_A * keys[i] -> moltiplicazione a 64 bit (IMUL => ris troncato a 64 bit)
-        //  >>shift (logico a dx) => estrae bit più sinificativi (singola ix)
-        //  static_cast<part_t> => tronca da 64 a 32 bit
-        part_ids[i] = static_cast<part_t>((HASH_A * keys[i]) >> shift);
+        // XOR-fold: combina le due metà a 32 bit della chiave
+        uint32_t k_lo = static_cast<uint32_t>(keys[i]);
+        uint32_t k_hi = static_cast<uint32_t>(keys[i] >> 32);
+        uint32_t mixed = k_lo ^ k_hi;
+        // Fibonacci multiply-shift a 32 bit
+        part_ids[i] = (mixed * HASH_A32) >> shift;
     }
 
-    /*OSS: condizioni (soddisfatte) del compilatore per poter trasformare in istruzioni AVX2:
+    /*OSS: condizioni (soddisfatte) del compilatore per auto-vectorization:
         - # iterazioni nota = N
         - iterazioni indipendenti tra loro
         - accesso sequenziale sia a part_ids che a keys
         - no function call né aliasing (-> uso di __restrict__)
         - nessun branch condizionale
+        - operazione centrale è mul32 (nativa in AVX2 come vpmulld)
     */
 }
 
@@ -67,8 +75,8 @@ int main(int argc, char *argv[])
         std::cerr << "P deve essere potenza di 2 (ricevuto " << P << ")\n";
         return 1;
     }
-    //calcolo shift tramite Count Trailing Zeros
-    const unsigned shift = 64 - __builtin_ctz(P);
+    // shift per hash a 32 bit: shift = 32 - log2(P)
+    const unsigned shift = compute_shift(P);
 
     //allocazione e generazione:
     spm_key_t *keys = alloc_aligned<spm_key_t>(N);

@@ -1,75 +1,81 @@
 /*
  * avx2.cpp => Partition mapping con intrinsics AVX2
  *
- * AVX2 non ha _mm256_mullo_epi64 (disponibile solo da AVX-512).
- * L'unica primitiva per moltiplicazione intera è _mm256_mul_epu32
- * che moltiplica i 32 bit bassi di ogni lane a 64 bit.
+ * Hash function: XOR-fold + Fibonacci multiply-shift a 32 bit
+ *   h(k) = ((k_lo ^ k_hi) * A32) >> shift32
  *
- * Il prodotto completo A*k mod 2^64 si decompone in:
- *   A*k = A_lo*k_lo + (A_lo*k_hi + A_hi*k_lo) << 32
- * (il termine A_hi*k_hi << 64 trabocca e viene scartato)
+ * Questa hash usa operazioni native AVX2:
+ *   - _mm256_srli_epi64: estrae k_hi (32 bit alti della chiave)
+ *   - _mm256_xor_si256: XOR fold k_lo ^ k_hi
+ *   - _mm256_mullo_epi32: Fibonacci multiply 32-bit (NATIVA, 1 istruzione!)
+ *   - _mm256_srli_epi32: shift per partition id
  *
- * Servono 3x vpmuludq + shift + add per emulare una mul64.
- * A_hi è pre-calcolato fuori dal loop per evitare shift ripetuti.
+ * A differenza di una hash mul64, qui non serve decomporre la
+ * moltiplicazione: _mm256_mullo_epi32 mappa direttamente su vpmulld
+ * (una singola istruzione AVX2). Questo è il punto chiave per
+ * ottenere speedup reale: senza operazioni native il SIMD perde
+ * il vantaggio (slide 8 L7&8: "not all intrinsics map one-to-one
+ * to a single instruction").
  *
- * -> 4 chiavi per iterazione (4 × 64 bit = 256 bit)
- * -> partition id (32 bit) estratti con vpermd e scritti come 4 uint32 contigui
+ * Layout: 8 chiavi uint64 per iterazione (2 registri ymm in input),
+ * i risultati sono 8 uint32 in un singolo registro ymm.
  */
 
 #include "common.hpp"
 #include <immintrin.h>
 
 /**
- * Kernel fn principale
+ * Kernel AVX2: processa 8 chiavi per iterazione.
+ * Carica 8 chiavi uint64 (2 × 256 bit), le ripega a 32 bit con XOR,
+ * moltiplica con A32 e shifta per ottenere il partition id.
  */
 void partition_map_avx2(const spm_key_t *__restrict__ keys,
                         part_t *__restrict__ part_ids,
                         size_t N,
                         unsigned shift)
 {
-    // costante hash nelle 4 lane a 64 bit
-    const __m256i va = _mm256_set1_epi64x(static_cast<int64_t>(HASH_A));
-    // pre-calcola A_hi (32 bit alti) — evita uno shift per iterazione
-    const __m256i va_hi = _mm256_srli_epi64(va, 32);
-    const size_t simd_end = N - (N % 4);
+    const __m256i va32 = _mm256_set1_epi32(static_cast<int32_t>(HASH_A32));
+    // indici per estrarre i 32 bit bassi da ogni lane 64-bit: pos 0,2,4,6
+    const __m256i shuf = _mm256_setr_epi32(0, 2, 4, 6, 1, 3, 5, 7);
+    const size_t simd_end = N - (N % 8);
 
-    // indici per estrarre i 32 bit bassi da ogni lane 64-bit
-    const __m256i perm_idx = _mm256_setr_epi32(0, 2, 4, 6, 1, 3, 5, 7);
-
-    for (size_t i = 0; i < simd_end; i += 4)
+    for (size_t i = 0; i < simd_end; i += 8)
     {
-        // carica 4 chiavi (aligned load, 32B alignment garantito da alloc_aligned)
-        __m256i vk = _mm256_load_si256(reinterpret_cast<const __m256i *>(&keys[i]));
+        // carica 8 chiavi uint64 in 2 registri ymm (4+4)
+        __m256i vk0 = _mm256_load_si256(reinterpret_cast<const __m256i *>(&keys[i]));
+        __m256i vk1 = _mm256_load_si256(reinterpret_cast<const __m256i *>(&keys[i + 4]));
 
-        // emulazione di A*k a 64 bit con 3 moltiplicazioni a 32 bit:
-        __m256i lo_lo = _mm256_mul_epu32(va, vk);      // A_lo * k_lo → 64 bit
-        __m256i k_hi  = _mm256_srli_epi64(vk, 32);     // estrai k_hi
-        __m256i cross1 = _mm256_mul_epu32(va, k_hi);    // A_lo * k_hi
-        __m256i cross2 = _mm256_mul_epu32(va_hi, vk);   // A_hi * k_lo
-        // somma i cross terms e shifta << 32
-        __m256i cross = _mm256_add_epi64(cross1, cross2);
-        cross = _mm256_slli_epi64(cross, 32);
-        __m256i prod = _mm256_add_epi64(lo_lo, cross);
+        // estrai k_hi (32 bit alti) di ogni chiave shiftando a destra di 32
+        __m256i hi0 = _mm256_srli_epi64(vk0, 32);
+        __m256i hi1 = _mm256_srli_epi64(vk1, 32);
+
+        // XOR fold: k_lo ^ k_hi (il risultato sta nei 32 bit bassi di ogni lane 64-bit)
+        __m256i x0 = _mm256_xor_si256(vk0, hi0);
+        __m256i x1 = _mm256_xor_si256(vk1, hi1);
+
+        // pack: estrai i 32 bit bassi di ogni lane 64-bit (4 valori per registro)
+        // e combina in un singolo registro con 8 valori a 32 bit
+        __m256i p0 = _mm256_permutevar8x32_epi32(x0, shuf); // [x0,x1,x2,x3,?,?,?,?]
+        __m256i p1 = _mm256_permutevar8x32_epi32(x1, shuf); // [x4,x5,x6,x7,?,?,?,?]
+        __m256i mixed = _mm256_permute2x128_si256(p0, p1, 0x20); // [x0..x3, x4..x7]
+
+        // Fibonacci multiply 32-bit: 8 moltiplicazioni in una istruzione (vpmulld)
+        __m256i prod = _mm256_mullo_epi32(mixed, va32);
 
         // shift a destra per ottenere il partition id
-        __m256i vhash = _mm256_srli_epi64(prod, shift);
+        __m256i h = _mm256_srli_epi32(prod, shift);
 
-        // pack 4×64 → 4×32: estrai i 32 bit bassi di ogni lane via permutazione
-        __m256i packed = _mm256_permutevar8x32_epi32(vhash, perm_idx);
-        // scrivi i 4 partition id (128 bit bassi)
-        _mm_storeu_si128(reinterpret_cast<__m128i *>(&part_ids[i]),
-                         _mm256_castsi256_si128(packed));
+        // scrivi 8 partition id (8 × 32 bit = 256 bit)
+        _mm256_storeu_si256(reinterpret_cast<__m256i *>(&part_ids[i]), h);
     }
 
-    // coda scalare per gli ultimi N%4 elementi
+    // coda scalare per gli ultimi N%8 elementi
     for (size_t i = simd_end; i < N; i++)
-        part_ids[i] = static_cast<part_t>((HASH_A * keys[i]) >> shift);
+        part_ids[i] = hash_key(keys[i], shift);
 }
 
 // kernel scalare di riferimento — compilato senza auto-vettorizzazione
-// (#pragma optimize) per confronto corretto: senza questo, GCC lo
-// vettorizzerebbe con SSE xmm (stessa decomposizione mul32) e lo speedup
-// risulterebbe confrontato contro una versione già semi-vettorizzata.
+// per confronto corretto vs AVX2 intrinsics
 #pragma GCC push_options
 #pragma GCC optimize ("no-tree-vectorize")
 static void partition_map_scalar(const spm_key_t *__restrict__ keys,
@@ -78,7 +84,7 @@ static void partition_map_scalar(const spm_key_t *__restrict__ keys,
                                  unsigned shift)
 {
     for (size_t i = 0; i < N; i++)
-        part_ids[i] = static_cast<part_t>((HASH_A * keys[i]) >> shift);
+        part_ids[i] = hash_key(keys[i], shift);
 }
 #pragma GCC pop_options
 
@@ -101,7 +107,7 @@ int main(int argc, char *argv[])
         std::cerr << "P deve essere potenza di 2 (ricevuto " << P << ")\n";
         return 1;
     }
-    const unsigned shift = 64 - __builtin_ctz(P);
+    const unsigned shift = compute_shift(P);
 
     spm_key_t *keys = alloc_aligned<spm_key_t>(N);
     part_t *part_avx2 = alloc_aligned<part_t>(N);

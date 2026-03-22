@@ -30,16 +30,19 @@
 __global__ //=> fn lanciata da CPU ma eseguita in GPU (non può ritornare un valore)
 void partition_map_cuda(const uint64_t* __restrict__ keys,
                         uint32_t*       __restrict__ part_ids,
-                        size_t N, uint64_t hash_a, unsigned shift) {
+                        size_t N, uint32_t hash_a32, unsigned shift) {
     size_t idx = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-    if (idx < N)
-        part_ids[idx] = static_cast<uint32_t>((hash_a * keys[idx]) >> shift);
+    if (idx < N) {
+        uint32_t k_lo = static_cast<uint32_t>(keys[idx]);
+        uint32_t k_hi = static_cast<uint32_t>(keys[idx] >> 32);
+        part_ids[idx] = ((k_lo ^ k_hi) * hash_a32) >> shift;
+    }
 }
 
 static void partition_map_cpu(const spm_key_t* keys, part_t* out,
                               size_t N, unsigned shift) {
     for (size_t i = 0; i < N; i++)
-        out[i] = static_cast<part_t>((HASH_A * keys[i]) >> shift);
+        out[i] = hash_key(keys[i], shift);
 }
 
 int main(int argc, char* argv[]) {
@@ -58,7 +61,7 @@ int main(int argc, char* argv[]) {
         std::cerr << "P deve essere potenza di 2\n";
         return 1;
     }
-    const unsigned shift = 64 - __builtin_ctz(P);
+    const unsigned shift = compute_shift(P);
 
     // host: pinned memory per trasferimenti veloci
     spm_key_t* h_keys;
@@ -90,7 +93,7 @@ int main(int argc, char* argv[]) {
 
     // warmup
     CUDA_CHECK(cudaMemcpy(d_keys, h_keys, N * sizeof(uint64_t), cudaMemcpyHostToDevice));
-    partition_map_cuda<<<nblocks, tpb>>>(d_keys, d_part, N, HASH_A, shift);
+    partition_map_cuda<<<nblocks, tpb>>>(d_keys, d_part, N, HASH_A32, shift);
     CUDA_CHECK(cudaDeviceSynchronize());
 
     std::vector<double> t_h2d, t_kern, t_d2h, t_tot;
@@ -99,7 +102,7 @@ int main(int argc, char* argv[]) {
         CUDA_CHECK(cudaMemcpy(d_keys, h_keys, N * sizeof(uint64_t), cudaMemcpyHostToDevice));
         CUDA_CHECK(cudaEventRecord(e1));
 
-        partition_map_cuda<<<nblocks, tpb>>>(d_keys, d_part, N, HASH_A, shift);
+        partition_map_cuda<<<nblocks, tpb>>>(d_keys, d_part, N, HASH_A32, shift);
         CUDA_CHECK(cudaEventRecord(e2));
 
         CUDA_CHECK(cudaMemcpy(h_part_gpu, d_part, N * sizeof(uint32_t), cudaMemcpyDeviceToHost));
