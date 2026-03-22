@@ -25,8 +25,7 @@ echo "Date: $(date)"
 echo "============================================"
 echo ""
 
-# Build
-make clean
+# Build (senza clean per non cancellare risultati di altri job in parallelo)
 make all
 
 OUTFILE="results/bench_cpu.txt"

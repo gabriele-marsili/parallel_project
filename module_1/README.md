@@ -105,3 +105,23 @@ After building `autovec`, GCC vectorization reports are saved to:
 ### P as power of 2
 - Enables bit-shift instead of modulo for partition mapping
 - Critical for SIMD: shift amount is uniform across all lanes
+
+## Analysis and Plots
+
+```bash
+# Parse raw benchmark results into CSV
+python3 analysis/parse_results.py results/bench_cpu.txt results/bench_cuda.txt
+
+# Generate all plots
+python3 analysis/plot_results.py
+```
+
+Plots are saved to `results/plots/`.
+
+## Test Environment
+
+- **Cluster**: spmcluster.unipi.it, node09 (gpu-excl partition, exclusive access)
+- **CPU**: AMD EPYC 7313 (Zen 3), 2 sockets × 16 cores, DDR4
+- **GPU**: NVIDIA A30 (HBM2, 993 GB/s, PCIe 4.0 x16)
+- **Compiler**: GCC 11, CUDA 12.3
+- **OS**: Linux 5.15
