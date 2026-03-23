@@ -193,16 +193,18 @@ Cost $C(p) = T_\text{par} \times p$ & $5.5 \times T_\text{seq}$ & $6.3 \times T_
 
 The efficiency of $\sim$16--18\% is characteristic of memory-bound kernels: SIMD lanes spend most of their time stalled waiting for data. Interpreting via Amdahl's law, the effective serial fraction is $f \approx 64\%$, which corresponds to the memory transfer time that cannot be parallelized by SIMD. Even with $p\!\to\!\infty$ (wider SIMD or AVX-512), the theoretical maximum speedup would be only $1/f \approx 1.56\times$.
 
-\subsection{Sweeps}
+\subsection{Parameter Sweeps}
 
-\textbf{P-sweep} (Figure~\ref{fig:speedup}): throughput and speedup are independent of $P$ (all curves flat), confirming that changing $P$ only modifies the shift constant---memory traffic and compute are unchanged.
+\textbf{N-sweep} (Figure~\ref{fig:speedup}): speedup is stable across all input sizes, from 1M to 200M keys. This confirms that the kernel is bandwidth-bound regardless of $N$: as $N$ grows, both the baseline and vectorized versions scale linearly with data size, preserving a constant speedup ratio.
 
-\textbf{Key-space sweep}: throughput is invariant to the duplicate rate, as expected for a branchless hash function with constant cost per key.
+\textbf{P-sweep}: throughput and speedup are independent of $P$ (all curves flat across $P \in [2, 1024]$), confirming that changing $P$ only modifies the shift constant---memory traffic and compute per key are unchanged.
+
+\textbf{Key-space sweep}: throughput is invariant to the key-space size (duplicate rate), as expected for a branchless hash function with constant cost per key.
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=\columnwidth]{../results/plots/03_speedup_vs_N.png}
-\caption{Speedup vs.\ input size ($P\!=\!256$). Stable at 1.3--1.5$\times$.}
+\caption{Speedup vs.\ input size $N$ ($P\!=\!256$). Both auto-vectorized and AVX2 intrinsics maintain stable speedup across all $N$, consistent with a bandwidth-bound kernel.}
 \label{fig:speedup}
 \end{figure}
 
