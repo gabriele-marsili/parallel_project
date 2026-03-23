@@ -210,7 +210,30 @@ The efficiency of $\sim$16--18\% is characteristic of memory-bound kernels: SIMD
 
 \subsection{Measurement Stability}
 
-Coefficient of variation $<5\%$ for all configurations, ensured by exclusive SLURM allocation and 11~repetitions with median reporting.
+Each configuration was executed 11 times on an exclusively allocated node (\texttt{--exclusive} SLURM flag, no co-tenants). We report the median and compute the coefficient of variation $\text{CoV} = \sigma / \tilde{x}$ as a stability indicator.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Impl.} & \textbf{Mean CoV} & \textbf{Max CoV} & \textbf{Measures} \\
+\midrule
+Baseline  & 1.98\% & 4.64\% & 20 \\
+Autovec   & 0.39\% & 3.27\% & 15 \\
+AVX2      & 3.46\% & 4.41\% & 20 \\
+\bottomrule
+\end{tabular}
+\caption{CoV statistics across all 55 measurements. None exceeds 5\%.}
+\end{table}
+
+The autovec version is the most stable (mean CoV $= 0.39\%$) because GCC's optimized scheduling produces highly deterministic memory access patterns. The AVX2 intrinsics version shows higher variance (mean $3.46\%$), likely due to the rigid instruction sequence interacting less predictably with the memory subsystem. Baseline CoV is higher at small~$N$ ($4.64\%$ at $N\!=\!1$M) where timer granularity and startup overhead are relatively significant, and drops below $0.1\%$ for $N\!\geq\!50$M (Figure~\ref{fig:stability}).
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\columnwidth]{../results/plots/08_measurement_stability.png}
+\caption{Coefficient of variation vs.\ $N$. All points below the 5\% threshold (dashed red). CoV generally decreases with $N$ as the measurement duration grows relative to system noise.}
+\label{fig:stability}
+\end{figure}
 
 % ===========================================================================
 \section{CUDA Implementation}
