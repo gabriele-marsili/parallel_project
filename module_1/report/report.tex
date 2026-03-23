@@ -173,6 +173,26 @@ The attainable performance ceiling at $I\!=\!0.33$ is $I \times B_\text{peak} = 
 
 \textbf{Why autovec $>$ AVX2 intrinsics}: GCC applies loop unrolling and instruction scheduling that our intrinsics code does not benefit from, achieving higher effective bandwidth (15.7 vs 14.4\,GB/s).
 
+\subsection{SIMD Metrics (L10)}
+
+Applying the L10 performance metrics to SIMD parallelism, where $p\!=\!8$ (AVX2 256-bit, 8 uint32 lanes):
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Metric} & \textbf{Autovec} & \textbf{AVX2} \\
+\midrule
+Speedup $S(p)$ & 1.46$\times$ & 1.27$\times$ \\
+Efficiency $E(p) = S/p$ & 18.2\% & 15.9\% \\
+Cost $C(p) = T_\text{par} \times p$ & $5.5 \times T_\text{seq}$ & $6.3 \times T_\text{seq}$ \\
+\bottomrule
+\end{tabular}
+\caption{SIMD metrics at $N\!=\!200$M, $P\!=\!256$, $p\!=\!8$.}
+\end{table}
+
+The efficiency of $\sim$16--18\% is characteristic of memory-bound kernels: SIMD lanes spend most of their time stalled waiting for data. Interpreting via Amdahl's law (L10 slide~25), the effective serial fraction is $f \approx 64\%$, which corresponds to the memory transfer time that cannot be parallelized by SIMD. Even with $p\!\to\!\infty$ (wider SIMD or AVX-512), the theoretical maximum speedup would be only $1/f \approx 1.56\times$.
+
 \subsection{Sweeps}
 
 \textbf{P-sweep} (Figure~\ref{fig:speedup}): throughput and speedup are independent of $P$ (all curves flat), confirming that changing $P$ only modifies the shift constant---memory traffic and compute are unchanged.

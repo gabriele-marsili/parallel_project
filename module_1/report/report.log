@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.11.1)  23 MAR 2026 13:37
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.11.1)  23 MAR 2026 13:42
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -514,7 +514,7 @@ Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 (hyperref)                removing `math shift' on input line 149.
 
-<../results/plots/14_roofline.png, id=102, 632.1216pt x 455.301pt>
+<../results/plots/14_roofline.png, id=106, 632.1216pt x 455.301pt>
 File: ../results/plots/14_roofline.png Graphic file (type png)
 <use ../results/plots/14_roofline.png>
 Package pdftex.def Info: ../results/plots/14_roofline.png  used on input line 1
@@ -522,25 +522,31 @@ Package pdftex.def Info: ../results/plots/14_roofline.png  used on input line 1
 (pdftex.def)             Requested size: 239.00298pt x 172.14775pt.
 
 
-<../results/plots/03_speedup_vs_N.png, id=105, 614.7768pt x 398.4486pt>
+
+Underfull \hbox (badness 2698) in paragraph at lines 194--195
+[]\T1/cmr/m/n/10 The ef-fi-ciency of $\OMS/cmsy/m/n/10 ^^X$\T1/cmr/m/n/10 16--1
+8% is char-ac-ter-is-tic of
+ []
+
+<../results/plots/03_speedup_vs_N.png, id=109, 614.7768pt x 398.4486pt>
 File: ../results/plots/03_speedup_vs_N.png Graphic file (type png)
 <use ../results/plots/03_speedup_vs_N.png>
 Package pdftex.def Info: ../results/plots/03_speedup_vs_N.png  used on input li
-ne 184.
+ne 204.
 (pdftex.def)             Requested size: 239.00298pt x 154.90186pt.
 
-Overfull \hbox (21.97067pt too wide) in paragraph at lines 201--212
+
+[2 <../results/plots/14_roofline.png> <../results/plots/03_speedup_vs_N.png>]
+Overfull \hbox (21.97067pt too wide) in paragraph at lines 221--232
  [][] 
  []
 
 
-Underfull \hbox (badness 4805) in paragraph at lines 216--217
+Underfull \hbox (badness 4805) in paragraph at lines 236--237
 []\T1/cmr/m/n/10 The ker-nel alone achieves 67320 Mkeys/s =
  []
 
 
-
-[2 <../results/plots/14_roofline.png> <../results/plots/03_speedup_vs_N.png>]
 
 
 
@@ -552,16 +558,16 @@ LaTeX2e <2024-11-01> patch level 2
 L3 programming layer <2025-01-18>
  ***********
 Package rerunfilecheck Info: File `report.out' has not changed.
-(rerunfilecheck)             Checksum: 18D592122789F5D26DABB8E38A9224C2;1903.
+(rerunfilecheck)             Checksum: C8A0ED47BCC7D6F03012156D20291279;2063.
  ) 
 Here is how much of TeX's memory you used:
- 13971 strings out of 473190
- 215827 string characters out of 5715800
+ 13976 strings out of 473190
+ 215892 string characters out of 5715800
  1029905 words of memory out of 5000000
- 37018 multiletter control sequences out of 15000+600000
- 575040 words of font info for 71 fonts, out of 8000000 for 9000
+ 37020 multiletter control sequences out of 15000+600000
+ 575806 words of font info for 72 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 75i,9n,79p,453b,1306s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 75i,12n,79p,473b,1306s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb
 ></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb>
 </usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9.pfb></
@@ -575,17 +581,18 @@ live/2025/texmf-dist/fonts/type1/public/cm-super/sfbx1000.pfb></usr/local/texli
 ve/2025/texmf-dist/fonts/type1/public/cm-super/sfbx1200.pfb></usr/local/texlive
 /2025/texmf-dist/fonts/type1/public/cm-super/sfbx1440.pfb></usr/local/texlive/2
 025/texmf-dist/fonts/type1/public/cm-super/sfbx1728.pfb></usr/local/texlive/202
-5/texmf-dist/fonts/type1/public/cm-super/sfrm0700.pfb></usr/local/texlive/2025/
-texmf-dist/fonts/type1/public/cm-super/sfrm0900.pfb></usr/local/texlive/2025/te
-xmf-dist/fonts/type1/public/cm-super/sfrm1000.pfb></usr/local/texlive/2025/texm
-f-dist/fonts/type1/public/cm-super/sfrm1200.pfb></usr/local/texlive/2025/texmf-
-dist/fonts/type1/public/cm-super/sfti1000.pfb></usr/local/texlive/2025/texmf-di
-st/fonts/type1/public/cm-super/sftt0800.pfb></usr/local/texlive/2025/texmf-dist
-/fonts/type1/public/cm-super/sftt1000.pfb>
-Output written on report.pdf (3 pages, 524114 bytes).
+5/texmf-dist/fonts/type1/public/cm-super/sfrm0600.pfb></usr/local/texlive/2025/
+texmf-dist/fonts/type1/public/cm-super/sfrm0700.pfb></usr/local/texlive/2025/te
+xmf-dist/fonts/type1/public/cm-super/sfrm0900.pfb></usr/local/texlive/2025/texm
+f-dist/fonts/type1/public/cm-super/sfrm1000.pfb></usr/local/texlive/2025/texmf-
+dist/fonts/type1/public/cm-super/sfrm1200.pfb></usr/local/texlive/2025/texmf-di
+st/fonts/type1/public/cm-super/sfti1000.pfb></usr/local/texlive/2025/texmf-dist
+/fonts/type1/public/cm-super/sftt0800.pfb></usr/local/texlive/2025/texmf-dist/f
+onts/type1/public/cm-super/sftt1000.pfb>
+Output written on report.pdf (3 pages, 549701 bytes).
 PDF statistics:
- 226 PDF objects out of 1000 (max. 8388607)
- 174 compressed objects within 2 object streams
- 48 named destinations out of 1000 (max. 500000)
- 107 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 237 PDF objects out of 1000 (max. 8388607)
+ 183 compressed objects within 2 object streams
+ 50 named destinations out of 1000 (max. 500000)
+ 115 words of extra memory for PDF output out of 10000 (max. 10000000)
 

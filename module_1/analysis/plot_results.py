@@ -572,6 +572,149 @@ def plot_cuda_vs_cpu(cpu_df, cuda_df, outdir, fmt):
 
 
 # ============================================================================
+# Metriche L10: Speedup, Efficiency, Costo, Amdahl (applicate a SIMD)
+# ============================================================================
+
+def plot_simd_metrics(df, outdir, fmt):
+    """15: Metriche della lezione 10 applicate al parallelismo SIMD.
+    
+    Nel contesto SIMD, il "numero di processori" p corrisponde alla
+    larghezza del vettore:
+      p=1 → scalare (baseline)
+      p=8 → AVX2 256-bit su uint32 (autovec e intrinsics)
+    
+    Metriche calcolate (L10 slide 5-6):
+      Speedup S(p) = T_seq / T_par(p)
+      Efficiency E(p) = S(p) / p
+      Cost C(p) = T_par(p) × p
+      Amdahl bound: S(p) ≤ 1 / (f + (1-f)/p)
+    """
+    sweep, main_P = sweep_N_data(df)
+    if sweep.empty:
+        return
+    
+    # Per ogni N, calcola le metriche SIMD
+    base = sweep[sweep['impl'] == 'baseline'][['N', 'median_ms']].rename(
+        columns={'median_ms': 't_seq'})
+    
+    if base.empty:
+        return
+    
+    # p=8 per AVX2 256-bit su uint32
+    p_simd = 8
+    
+    rows = []
+    for impl, p_label in [('autovec', 'Auto-vec (p=8)'), ('avx2', 'AVX2 (p=8)')]:
+        sub = sweep[sweep['impl'] == impl][['N', 'median_ms']].rename(
+            columns={'median_ms': 't_par'})
+        if sub.empty:
+            continue
+        merged = sub.merge(base, on='N').sort_values('N')
+        for _, row in merged.iterrows():
+            speedup = row['t_seq'] / row['t_par']
+            efficiency = speedup / p_simd
+            cost = row['t_par'] * p_simd
+            rows.append({
+                'N': row['N'], 'impl': p_label,
+                't_seq': row['t_seq'], 't_par': row['t_par'],
+                'speedup': speedup, 'efficiency': efficiency, 'cost': cost,
+            })
+    
+    if not rows:
+        return
+    
+    import pandas as pd
+    mdf = pd.DataFrame(rows)
+    
+    fig, axes = plt.subplots(2, 2, figsize=(12, 9))
+    fig.suptitle(f'Metriche SIMD (L10) — p=8 lane AVX2 (P={main_P})',
+                 fontsize=14, fontweight='bold')
+    
+    colors = {'Auto-vec (p=8)': '#2E7D32', 'AVX2 (p=8)': '#E65100'}
+    markers = {'Auto-vec (p=8)': 's', 'AVX2 (p=8)': 'D'}
+    
+    # --- 1. Speedup ---
+    ax = axes[0, 0]
+    for impl in mdf['impl'].unique():
+        sub = mdf[mdf['impl'] == impl].sort_values('N')
+        ax.plot(sub['N'], sub['speedup'], marker=markers[impl],
+                color=colors[impl], label=impl)
+    # Amdahl bound per diversi valori di f
+    # Stima f dal miglior speedup osservato: S = 1/(f + (1-f)/p) → f = (1/S - 1/p)/(1 - 1/p)
+    best_S = mdf['speedup'].max()
+    f_est = (1.0/best_S - 1.0/p_simd) / (1.0 - 1.0/p_simd)
+    s_amdahl = 1.0 / (f_est + (1.0 - f_est) / p_simd)
+    ax.axhline(y=p_simd, color='red', linestyle=':', alpha=0.5,
+               label=f'Lineare (p={p_simd})')
+    ax.axhline(y=s_amdahl, color='purple', linestyle='--', alpha=0.6,
+               label=f'Amdahl (f={f_est:.1%}): S={s_amdahl:.2f}')
+    ax.set_xlabel('N')
+    ax.set_ylabel('Speedup S(p)')
+    ax.set_title('Speedup SIMD (L10 slide 5)')
+    ax.set_xscale('log')
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: format_N(int(x))))
+    ax.legend(fontsize=8)
+    
+    # --- 2. Efficiency ---
+    ax = axes[0, 1]
+    for impl in mdf['impl'].unique():
+        sub = mdf[mdf['impl'] == impl].sort_values('N')
+        ax.plot(sub['N'], sub['efficiency'] * 100, marker=markers[impl],
+                color=colors[impl], label=impl)
+    ax.axhline(y=100, color='red', linestyle=':', alpha=0.5, label='Ideale (100%)')
+    ax.axhline(y=100.0/p_simd, color='gray', linestyle='--', alpha=0.4,
+               label=f'1/p = {100.0/p_simd:.1f}%')
+    ax.set_xlabel('N')
+    ax.set_ylabel('Efficienza E(p) %')
+    ax.set_title('Efficienza SIMD (L10 slide 6)')
+    ax.set_xscale('log')
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: format_N(int(x))))
+    ax.set_ylim(0, 105)
+    ax.legend(fontsize=8)
+    
+    # --- 3. Costo C(p) = T_par × p vs T_seq ---
+    ax = axes[1, 0]
+    # T_seq
+    base_sorted = base.sort_values('N')
+    ax.plot(base_sorted['N'], base_sorted['t_seq'], marker='o',
+            color='#1565C0', label='T_seq (costo ottimale)')
+    for impl in mdf['impl'].unique():
+        sub = mdf[mdf['impl'] == impl].sort_values('N')
+        ax.plot(sub['N'], sub['cost'], marker=markers[impl],
+                color=colors[impl], label=f'C(p)={impl}', linestyle='--')
+    ax.set_xlabel('N')
+    ax.set_ylabel('Costo (ms)')
+    ax.set_title(f'Costo C(p) = T_par × p  (L10 slide 6)')
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: format_N(int(x))))
+    ax.legend(fontsize=8)
+    
+    # --- 4. Amdahl's Law: speedup teorico vs misurato ---
+    ax = axes[1, 1]
+    p_range = np.arange(1, 17)
+    # Calcola f stimato dai dati (usando N più grande)
+    max_N_data = mdf[mdf['N'] == mdf['N'].max()]
+    for _, row in max_N_data.iterrows():
+        f_val = (1.0/row['speedup'] - 1.0/p_simd) / (1.0 - 1.0/p_simd)
+        s_curve = 1.0 / (f_val + (1.0 - f_val) / p_range)
+        ax.plot(p_range, s_curve, linestyle='--', alpha=0.7, color=colors[row['impl']],
+                label=f'Amdahl f={f_val:.1%} ({row["impl"]})')
+        ax.scatter([p_simd], [row['speedup']], marker=markers[row['impl']],
+                   color=colors[row['impl']], s=120, zorder=5, edgecolors='black')
+    ax.plot(p_range, p_range, color='red', linestyle=':', alpha=0.5, label='Lineare S=p')
+    ax.set_xlabel('p (SIMD width / lane)')
+    ax.set_ylabel('Speedup S(p)')
+    ax.set_title(f"Amdahl's Law (L10 slide 25-28)\nN={format_N(int(mdf['N'].max()))}")
+    ax.legend(fontsize=8)
+    ax.set_xlim(0.5, 16.5)
+    ax.set_ylim(0, 9)
+    
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    save_fig(fig, outdir, '15_simd_metrics_L10', fmt)
+
+
+# ============================================================================
 # Grafico Roofline (slide L5&6, 47-51)
 # ============================================================================
 
@@ -738,6 +881,7 @@ def main():
         plot_time_per_key(cpu_df, outdir, args.format)
         plot_summary_table(cpu_df, outdir, args.format)
         plot_roofline(cpu_df, outdir, args.format)
+        plot_simd_metrics(cpu_df, outdir, args.format)
 
     if cuda_df is not None and len(cuda_df) > 0:
         plot_cuda_breakdown(cuda_df, outdir, args.format)
