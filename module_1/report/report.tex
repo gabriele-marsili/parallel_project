@@ -1,0 +1,228 @@
+\documentclass[10pt,a4paper,twocolumn]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1.8cm,top=2cm,bottom=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{caption}
+
+\setlength{\columnsep}{0.6cm}
+\setlist{noitemsep,topsep=2pt}
+\captionsetup{font=small,labelfont=bf}
+
+\lstset{
+  basicstyle=\ttfamily\scriptsize,
+  keywordstyle=\color{blue!70!black},
+  commentstyle=\color{green!50!black},
+  breaklines=true,
+  frame=single,
+  xleftmargin=2mm,
+  framexleftmargin=2mm,
+  columns=fullflexible,
+}
+
+\title{\vspace{-1.5em}\textbf{SPM Module 1: Vectorization of the Partition Mapping Kernel}\vspace{-0.5em}}
+\author{Gabriele Marsili}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-1.5em}
+
+% ===========================================================================
+\section{Design Choices}
+% ===========================================================================
+
+\textbf{Problem.} Given $N$ keys (uint64\_t) and $P$ partitions (power of two), compute $\text{part\_id}[i] = h(\text{keys}[i]) \in [0,P)$ for each key.
+
+\subsection{Hash Function: XOR-fold + Fibonacci mul32}
+
+The mapping function is:
+\begin{equation}
+h(k) = \bigl((k_\text{lo} \oplus k_\text{hi}) \cdot A_{32}\bigr) \gg (32 - \log_2 P)
+\label{eq:hash}
+\end{equation}
+where $k_\text{lo}$, $k_\text{hi}$ are the lower and upper 32 bits of the 64-bit key, and $A_{32} = \texttt{0x9E3779B9} = \lfloor 2^{32}/\varphi \rfloor$ is the Fibonacci constant (Knuth, TAOCP Vol.\,3).
+
+\textbf{Why this function.} The choice is driven by three considerations:
+
+\begin{enumerate}
+  \item \textbf{SIMD-native}: the core operation is a 32-bit multiply, which maps to \texttt{vpmulld}---a native AVX2 instruction processing 8~elements at once. A~64-bit hash would need $3\times$~\texttt{vpmuludq} decomposition, since AVX2 lacks \texttt{mullo\_epi64} (L7\&8 slide~8: \emph{``not all intrinsics map one-to-one to a single instruction''}).
+
+  \item \textbf{Entropy preservation}: $k_\text{lo} \oplus k_\text{hi}$ combines both key halves; the Fibonacci constant provides quasi-universal hashing (collision $\leq 2/P$).
+
+  \item \textbf{Minimal computation}: XOR~+ mul32~+ shift per key---no division, no modulo, no branch.
+\end{enumerate}
+
+\textbf{Distribution quality.} Measured on $10^8$~keys with $P\!=\!256$: $\max(\text{count})/\text{expected} = 1.005$, confirming near-uniform distribution.
+
+\subsection{Data Layout}
+
+Keys and partition IDs are stored in separate contiguous arrays (\texttt{uint64\_t[]} and \texttt{uint32\_t[]}), accessed with unit stride. This SoA-like layout is optimal for vectorization (L7\&8 slide~30, 39). Memory is aligned to 32~bytes via \texttt{posix\_memalign} for efficient AVX2 loads.
+
+% ===========================================================================
+\section{Auto-vectorization Evidence}
+% ===========================================================================
+
+The kernel is compiled from the same source into two binaries:
+\begin{itemize}
+  \item \textbf{Baseline}: \texttt{-O3 -march=native -fno-tree-vectorize}
+  \item \textbf{Autovec}: \texttt{-O3 -march=native -mavx2 -ftree-vectorize}
+\end{itemize}
+
+GCC~12.2 reports successful vectorization:
+
+\begin{lstlisting}
+src/plain.cpp:33:26: optimized: loop vectorized
+  using 32 byte vectors
+src/plain.cpp:33:26: optimized: loop vectorized
+  using 16 byte vectors
+\end{lstlisting}
+
+The compiler generates both 256-bit (ymm) and 128-bit (xmm) versions; at runtime, the most efficient variant is selected. The key enabler is that the hash uses \texttt{mul32}, which maps to \texttt{vpmulld}---a native instruction. With a mul64 hash, GCC would only emit 128-bit code using the decomposed \texttt{vpmuludq}.
+
+\textbf{Vectorizability conditions} (L7\&8 slide~34): all are satisfied---fixed trip count, no inter-iteration dependencies, no function calls, \texttt{\_\_restrict\_\_} for aliasing, unit stride access, and a SIMD-native operation.
+
+% ===========================================================================
+\section{AVX2 Intrinsics Strategy}
+% ===========================================================================
+
+The intrinsics version processes \textbf{8~keys per iteration} using two ymm loads (4+4 keys) that are XOR-folded, packed into a single ymm of 8$\times$uint32, multiplied with one \texttt{vpmulld}, shifted, and stored:
+
+\begin{lstlisting}[language=C++]
+for (size_t i = 0; i < simd_end; i += 8) {
+  __m256i vk0 = _mm256_load_si256(&keys[i]);
+  __m256i vk1 = _mm256_load_si256(&keys[i+4]);
+  // XOR fold: k_lo ^ k_hi
+  __m256i x0 = _mm256_xor_si256(vk0,
+               _mm256_srli_epi64(vk0, 32));
+  __m256i x1 = _mm256_xor_si256(vk1,
+               _mm256_srli_epi64(vk1, 32));
+  // pack 4+4 -> 8 x uint32
+  __m256i mixed = _mm256_permute2x128_si256(
+    _mm256_permutevar8x32_epi32(x0, shuf),
+    _mm256_permutevar8x32_epi32(x1, shuf), 0x20);
+  // native mul32 + shift
+  __m256i h = _mm256_srli_epi32(
+    _mm256_mullo_epi32(mixed, va32), shift);
+  _mm256_storeu_si256(&part_ids[i], h);
+}
+\end{lstlisting}
+
+\textbf{Instruction count}: $\sim$12 SIMD instructions for 8~keys ($1.5$/key), vs.\ $\sim$3 scalar instructions per key. The theoretical speedup from instruction reduction alone would be $3/1.5 = 2\times$, but the kernel is memory-bound (see Section~\ref{sec:analysis}).
+
+\textbf{Correctness}: the AVX2 binary verifies checksum identity against a scalar reference before benchmarking. Element-wise comparison is available for $N\!\leq\!32$.
+
+% ===========================================================================
+\section{Performance Results and Analysis}
+\label{sec:analysis}
+% ===========================================================================
+
+All benchmarks run on \textbf{node09} (AMD EPYC 7301, Zen~1, 2.7\,GHz boost, DDR4-2666) with exclusive SLURM allocation (\texttt{--partition=gpu-excl}), 11~repetitions, median reported.
+
+\subsection{Summary}
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Version} & \textbf{Throughput} & \textbf{Speedup} & \textbf{BW} \\
+ & (Mkeys/s) & (vs baseline) & (GB/s) \\
+\midrule
+Baseline (no-vec) & 910 & 1.00$\times$ & 10.9 \\
+Auto-vectorized   & 1310 & 1.43$\times$ & 15.7 \\
+AVX2 intrinsics   & 1200 & 1.31$\times$ & 14.4 \\
+\midrule
+CUDA kernel-only  & 67\,320 & 73.8$\times$ & 808 \\
+CUDA end-to-end   & 1\,031 & 1.13$\times$ & 12.4 \\
+\bottomrule
+\end{tabular}
+\caption{Performance at $N\!=\!100$M, $P\!=\!256$. BW computed as throughput $\times$ 12\,B/key (8\,B read + 4\,B write).}
+\label{tab:summary}
+\end{table}
+
+\subsection{Roofline Analysis: Why Only 1.3--1.4$\times$}
+
+The kernel transfers 12 bytes per key (8\,B input + 4\,B output) and performs $\sim$4 operations (XOR, mul32, shift, store). The \textbf{operational intensity} is:
+\begin{equation}
+I = \frac{4\text{ ops}}{12\text{ bytes}} = 0.33\text{ ops/byte}
+\end{equation}
+
+Using the roofline model (L5\&6 slide~49): $P = \min(R_\text{peak},\, I \times B_\text{peak})$, with hardware parameters measured on node09:
+\begin{itemize}
+  \item $B_\text{peak} = 16.4$ GB/s (single-core, measured via AVX2 copy)
+  \item $R_\text{peak}^\text{scalar} = 5.17$ Gops/s
+  \item $R_\text{peak}^\text{AVX2} = 15.28$ Gops/s
+\end{itemize}
+
+The attainable performance ceiling at $I\!=\!0.33$ is $I \times B_\text{peak} = 5.47$ Gops/s. The auto-vectorized version achieves 5.29 Gops/s = \textbf{97\% of the bandwidth ceiling}. Figure~\ref{fig:roofline} confirms all three implementations lie on the bandwidth ramp.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\columnwidth]{../results/plots/14_roofline.png}
+\caption{Roofline model. All kernel variants fall in the bandwidth-bound region ($I\!=\!0.33$ ops/byte).}
+\label{fig:roofline}
+\end{figure}
+
+\textbf{Why the speedup is only $\sim$1.3$\times$ instead of 8$\times$}: AVX2 theoretically processes 8 uint32 elements per instruction, but this only accelerates computation time ($t_\text{comp}$). Since the kernel is memory-bound ($t_\text{mem} > t_\text{comp}$), the speedup comes solely from more efficient bandwidth utilization---fewer total instructions means less frontend pressure and better prefetching.
+
+\textbf{Why autovec $>$ AVX2 intrinsics}: GCC applies loop unrolling and instruction scheduling that our intrinsics code does not benefit from, achieving higher effective bandwidth (15.7 vs 14.4\,GB/s).
+
+\subsection{Sweeps}
+
+\textbf{P-sweep} (Figure~\ref{fig:speedup}): throughput and speedup are independent of $P$ (all curves flat), confirming that changing $P$ only modifies the shift constant---memory traffic and compute are unchanged.
+
+\textbf{Key-space sweep}: throughput is invariant to the duplicate rate, as expected for a branchless hash function with constant cost per key.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\columnwidth]{../results/plots/03_speedup_vs_N.png}
+\caption{Speedup vs.\ input size ($P\!=\!256$). Stable at 1.3--1.5$\times$.}
+\label{fig:speedup}
+\end{figure}
+
+\subsection{Measurement Stability}
+
+Coefficient of variation $<5\%$ for all configurations, ensured by exclusive SLURM allocation (L4) and 11~repetitions with median reporting.
+
+% ===========================================================================
+\section{CUDA Implementation}
+% ===========================================================================
+
+The CUDA kernel applies the same XOR-fold + mul32 hash, one thread per key, with 256 threads/block. Correctness is verified by checksum comparison against the CPU reference.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+\textbf{Phase} & \textbf{Time (ms)} & \textbf{BW (GB/s)} & \textbf{\% total} \\
+\midrule
+H$\to$D transfer & 63.2 & 12.7 & 65.2\% \\
+Kernel           &  1.5 & 808  &  1.5\% \\
+D$\to$H transfer & 32.3 & 12.4 & 33.3\% \\
+\midrule
+\textbf{Total (end-to-end)} & \textbf{97.0} & --- & 100\% \\
+\bottomrule
+\end{tabular}
+\caption{CUDA timing breakdown at $N\!=\!100$M, $P\!=\!256$.}
+\label{tab:cuda}
+\end{table}
+
+The kernel alone achieves 67\,320 Mkeys/s = 808\,GB/s, utilizing \textbf{81\%} of the A30's HBM2 peak (993\,GB/s, L9 slide~24). However, PCIe 4.0 transfers dominate end-to-end time (\textbf{98.5\%}), making GPU offload of this isolated kernel no faster than the CPU. GPU offload would become advantageous only if the data were already resident in GPU memory or if subsequent pipeline stages also executed on GPU.
+
+% ===========================================================================
+\section{Conclusions}
+% ===========================================================================
+
+The partition mapping kernel is a textbook memory-bound workload. At $I = 0.33$ ops/byte, performance is capped by DRAM bandwidth on both CPU and GPU (via PCIe for end-to-end). SIMD (both auto-vectorized and intrinsics) provides a modest 1.3--1.4$\times$ speedup by improving bandwidth utilization efficiency, not by reducing computation time.
+
+The critical design insight was choosing a 32-bit hash function (\texttt{vpmulld}-native) over a 64-bit one (requiring $3\times$ \texttt{vpmuludq} decomposition). With the 64-bit hash, AVX2 was actually \emph{slower} than scalar code---the decomposition overhead exceeded the parallelism benefit in a bandwidth-limited regime.
+
+Further speedup would require multi-core parallelism to aggregate bandwidth across memory channels (Module~2), or algorithmic changes to increase operational intensity (e.g., fusing the mapping with downstream join operations).
+
+\end{document}

@@ -32,7 +32,7 @@ void partition_map_cuda(const uint64_t* __restrict__ keys,
                         uint32_t*       __restrict__ part_ids,
                         size_t N, uint32_t hash_a32, unsigned shift) {
     size_t idx = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-    if (idx < N) {
+    if (idx < N) { //bound check
         uint32_t k_lo = static_cast<uint32_t>(keys[idx]);
         uint32_t k_hi = static_cast<uint32_t>(keys[idx] >> 32);
         part_ids[idx] = ((k_lo ^ k_hi) * hash_a32) >> shift;
