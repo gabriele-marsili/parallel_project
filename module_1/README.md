@@ -95,11 +95,12 @@ After building `autovec`, GCC vectorization reports are saved to:
 
 ## Design Choices
 
-### Hash Function: Multiply-Shift (Fibonacci Hashing)
-- **h(k) = (A × k) >> (64 − log₂P)** where A = 0x9E3779B97F4A7C15
-- Universal hashing guarantee (Ferragina, Ch.8 §8.3.1)
-- Only multiply + shift — no division/modulo
-- SIMD-friendly: maps to AVX2 `_mm256_mul_epu32` decomposition
+### Hash Function: XOR-fold + Fibonacci Multiply-Shift (32-bit)
+- **h(k) = ((k_lo ⊕ k_hi) × A₃₂) >> (32 − log₂P)** where A₃₂ = 0x9E3779B9
+- XOR-fold preserves entropy from both halves of the 64-bit key
+- Only XOR + mul32 + shift — no division/modulo
+- **SIMD-native**: `_mm256_mullo_epi32` (vpmulld) is a native AVX2 instruction
+  (unlike mul64, which would require 3× vpmuludq decomposition)
 - Excellent distribution from golden-ratio constant (Knuth, TAOCP Vol.3)
 
 ### P as power of 2

@@ -572,6 +572,120 @@ def plot_cuda_vs_cpu(cpu_df, cuda_df, outdir, fmt):
 
 
 # ============================================================================
+# Grafico Roofline (slide L5&6, 47-51)
+# ============================================================================
+
+def plot_roofline(df, outdir, fmt):
+    """14: Roofline model — P = min(R_peak, I × B).
+    
+    Parametri hardware misurati su node09 (AMD EPYC 7301 Zen 1, singolo core)
+    con catene indipendenti (come nel kernel reale):
+      B_peak  = 16.4 GB/s  (copy AVX2 256-bit, misurato)
+      R_peak_scalar = 5.17 Gops/s  (XOR+MUL32+SHIFT, 4 catene indipendenti)
+      R_peak_AVX2   = 15.28 Gops/s (XOR+MUL32+SHIFT, 4×ymm catene indipendenti)
+    
+    Il kernel partition_map ha OI = 4 ops / 12 byte = 0.333 ops/byte.
+    """
+    # === Parametri hardware (misurati su node09) ===
+    B_peak = 16.4        # GB/s — bandwidth picco singolo core (copy AVX2)
+    R_peak_scalar = 5.17   # Gops/s — peak scalare (4 catene indip, XOR+MUL+SHIFT)
+    R_peak_avx2 = 15.28   # Gops/s — peak AVX2 (4 catene × 8 elem, XOR+MUL+SHIFT)
+    
+    # === Operational intensity del kernel ===
+    # 4 ops (xor + mul32 + shift + store) / 12 byte (8 read + 4 write) = 0.333
+    OI_kernel = 4.0 / 12.0
+    
+    # === Prestazioni misurate dal CSV (N più grande con P=256) ===
+    sub = df[(df['key_space'] == 0)].copy()
+    if sub.empty:
+        return
+    main_P = sub['P'].mode().iloc[0] if not sub['P'].mode().empty else 256
+    sub = sub[sub['P'] == main_P]
+    # prendi la N più grande per dati stabili
+    max_N = sub['N'].max()
+    sub = sub[sub['N'] == max_N]
+    
+    perf_measured = {}
+    for impl in ['baseline', 'autovec', 'avx2']:
+        row = sub[sub['impl'] == impl]
+        if not row.empty:
+            tput = row['throughput_Mkeys_s'].median()  # Mkeys/s
+            # 4 ops/key × tput Mkeys/s = 4*tput Mops/s = 4*tput/1000 Gops/s
+            perf_measured[impl] = (tput * 4) / 1000.0  # Gops/s
+    
+    if not perf_measured:
+        return
+    
+    # === Costruzione curva Roofline ===
+    fig, ax = plt.subplots(figsize=(10, 7))
+    
+    # Range OI per il grafico (scala log)
+    oi_range = np.logspace(-2, 2, 500)  # da 0.01 a 100 ops/byte
+    
+    # Roofline scalare: P = min(R_peak_scalar, OI × B_peak)
+    roof_scalar = np.minimum(R_peak_scalar, oi_range * B_peak)
+    ax.plot(oi_range, roof_scalar, color='#1565C0', linewidth=2.0,
+            linestyle='--', alpha=0.7, label=f'Roofline scalare (R={R_peak_scalar:.2f} Gops/s)')
+    
+    # Roofline AVX2: P = min(R_peak_avx2, OI × B_peak)
+    roof_avx2 = np.minimum(R_peak_avx2, oi_range * B_peak)
+    ax.plot(oi_range, roof_avx2, color='#E65100', linewidth=2.5,
+            label=f'Roofline AVX2 (R={R_peak_avx2:.1f} Gops/s)')
+    
+    # Linea bandwidth (la parte diagonale, comune a entrambi i roofline)
+    bw_line = oi_range * B_peak
+    ax.plot(oi_range, bw_line, color='#B71C1C', linewidth=1.5, linestyle=':',
+            alpha=0.5, label=f'BW limit ({B_peak:.1f} GB/s)')
+    
+    # === Punti misurati ===
+    marker_styles = {
+        'baseline': ('o', '#1565C0', 'Baseline (no-vec)'),
+        'autovec':  ('s', '#2E7D32', 'Auto-vectorized'),
+        'avx2':     ('D', '#E65100', 'AVX2 intrinsics'),
+    }
+    
+    for impl, perf in perf_measured.items():
+        m, c, lab = marker_styles.get(impl, ('x', 'gray', impl))
+        ax.scatter(OI_kernel, perf, marker=m, color=c, s=150, zorder=5,
+                   edgecolors='black', linewidths=1.0,
+                   label=f'{lab}: {perf:.2f} Gops/s')
+    
+    # === Ridge points (intersezione bandwidth e compute) ===
+    ridge_scalar = R_peak_scalar / B_peak
+    ridge_avx2 = R_peak_avx2 / B_peak
+    ax.axvline(x=ridge_scalar, color='#1565C0', linestyle=':', alpha=0.3, linewidth=1)
+    ax.axvline(x=ridge_avx2, color='#E65100', linestyle=':', alpha=0.3, linewidth=1)
+    
+    # Linea verticale OI del kernel
+    ax.axvline(x=OI_kernel, color='gray', linestyle='--', alpha=0.4, linewidth=1.2)
+    ax.annotate(f'OI kernel\n= {OI_kernel:.2f} ops/byte',
+                xy=(OI_kernel, 0.015), xycoords=('data', 'axes fraction'),
+                ha='center', fontsize=9, color='#424242',
+                bbox=dict(boxstyle='round,pad=0.3', facecolor='#FFF9C4', alpha=0.8))
+    
+    # Annotazioni zone
+    ax.text(0.015, 0.3, 'Bandwidth\nbound', transform=ax.transAxes,
+            fontsize=11, ha='left', va='center', color='#B71C1C', alpha=0.6,
+            fontstyle='italic')
+    ax.text(0.85, 0.85, 'Compute\nbound', transform=ax.transAxes,
+            fontsize=11, ha='center', va='center', color='#1B5E20', alpha=0.6,
+            fontstyle='italic')
+    
+    # === Stile ===
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.set_xlabel('Operational Intensity (ops/byte)', fontsize=12)
+    ax.set_ylabel('Performance (Gops/s)', fontsize=12)
+    ax.set_title('Roofline Model — AMD EPYC 7301 (Zen 1, singolo core)', fontsize=14, fontweight='bold')
+    ax.set_xlim(0.01, 100)
+    ax.set_ylim(0.01, 50)
+    ax.legend(loc='lower right', fontsize=9, framealpha=0.9)
+    ax.grid(True, which='both', alpha=0.2, linestyle='-')
+    
+    save_fig(fig, outdir, '14_roofline', fmt)
+
+
+# ============================================================================
 # Main
 # ============================================================================
 
@@ -623,6 +737,7 @@ def main():
         plot_bandwidth_utilization(cpu_df, outdir, args.format)
         plot_time_per_key(cpu_df, outdir, args.format)
         plot_summary_table(cpu_df, outdir, args.format)
+        plot_roofline(cpu_df, outdir, args.format)
 
     if cuda_df is not None and len(cuda_df) > 0:
         plot_cuda_breakdown(cuda_df, outdir, args.format)

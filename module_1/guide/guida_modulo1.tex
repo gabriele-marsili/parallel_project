@@ -161,9 +161,13 @@ In cambio, eliminando l'addizione risparmiamo un'operazione aritmetica per chiav
 
 \paragraph{La scelta della costante $A$: non basta che sia dispari.}
 
-La costante $A$ \`e scelta come:
-$$A = \lfloor 2^{64} / \varphi \rfloor = \texttt{0x9E3779B97F4A7C15}$$
+La costante $A$ \`e scelta come il \textbf{Fibonacci number a 32 bit}:
+$$A_{32} = \lfloor 2^{32} / \varphi \rfloor = \texttt{0x9E3779B9}$$
 dove $\varphi = (1+\sqrt{5})/2$ \`e il rapporto aureo (Knuth, TAOCP Vol.\ 3, \S6.4).
+
+Poich\'e le chiavi sono a 64 bit ma la costante \`e a 32 bit, la chiave viene prima ``ripiegata'' con XOR delle due met\`a:
+$$h(k) = \bigl((k_\text{lo} \oplus k_\text{hi}) \cdot A_{32}\bigr) \gg (32 - \log_2 P)$$
+dove $k_\text{lo}$ e $k_\text{hi}$ sono i 32 bit bassi e alti della chiave. La XOR-fold preserva l'entropia di entrambe le met\`a.
 
 \begin{warnbox}[title=\textbf{Dispari \`e necessario ma non sufficiente}]
 Nella classe universale multiply-shift, $a$ \textbf{deve} essere dispari perch\'e in aritmetica modulo $2^w$ solo gli interi dispari hanno inverso moltiplicativo, e quindi la mappa $k \mapsto a \cdot k \bmod 2^w$ \`e una \textbf{biiezione} (permutazione) su $\{0, \ldots, 2^w -1\}$.
@@ -183,7 +187,7 @@ La costante $\lfloor 2^{64}/\varphi \rfloor$ ha tre propriet\`a speciali:
 \begin{enumerate}
     \item \textbf{Equidistribuzione di Weyl}: la sequenza $\{k \cdot \alpha\}$ (parte frazionaria di $k$ per un irrazionale $\alpha$) \`e equidistribuita modulo 1. Il reciproco del rapporto aureo $1/\varphi$ \`e il numero ``pi\`u irrazionale'' --- la sua approssimazione con frazioni continue converge pi\`u lentamente di qualsiasi altro irrazionale. Questo garantisce la \textbf{massima uniformit\`a} nella distribuzione delle chiavi tra le partizioni.
 
-    \item \textbf{Bit-mixing}: la rappresentazione binaria di \texttt{0x9E3779B97F4A7C15} ha una miscela quasi bilanciata di 0 e 1 distribuiti irregolarmente. Moltiplicando per questo numero, \textbf{ogni bit del risultato dipende da molti bit dell'input}, a differenza di costanti con pattern regolari (es.\ \texttt{0xAAAA...}).
+    \item \textbf{Bit-mixing}: la rappresentazione binaria di \texttt{0x9E3779B9} ha una miscela quasi bilanciata di 0 e 1 distribuiti irregolarmente. Moltiplicando per questo numero, \textbf{ogni bit del risultato dipende da molti bit dell'input}, a differenza di costanti con pattern regolari (es.\ \texttt{0xAAAA...}).
 
     \item \textbf{Dispari per costruzione}: $\lfloor 2^{64}/\varphi \rfloor$ \`e dispari, soddisfacendo automaticamente il requisito formale della classe universale.
 \end{enumerate}
@@ -191,14 +195,23 @@ La costante $\lfloor 2^{64}/\varphi \rfloor$ ha tre propriet\`a speciali:
 
 \textbf{Motivazioni per la scelta rispetto al progetto:}
 \begin{enumerate}
-    \item \textbf{Velocit\`a}: una sola moltiplicazione + uno shift (nessuna divisione, nessuna addizione)
-    \item \textbf{SIMD-friendly}: la moltiplicazione si decompone in operazioni AVX2 a 32 bit; lo shift \`e uniforme su tutte le lane
+    \item \textbf{Velocit\`a}: XOR + una moltiplicazione 32-bit + uno shift (nessuna divisione)
+    \item \textbf{SIMD-native}: la moltiplicazione a 32 bit mappa direttamente su \texttt{\_mm256\_mullo\_epi32} (istruzione \texttt{vpmulld}), \textbf{nativa} in AVX2 --- 8 moltiplicazioni in una sola istruzione. A differenza di una hash a 64 bit, non servono 3$\times$ \texttt{vpmuludq} per emulare il prodotto
+    \item \textbf{XOR-fold}: combina i 32 bit alti e bassi della chiave preservando entropia da entrambe le met\`a
     \item \textbf{Distribuzione quasi-universale}: garanzia teorica $\leq 2/P$ di collisioni per coppia, sufficiente per il partizionamento
     \item \textbf{Qualit\`a pratica della costante}: il golden ratio fornisce la migliore equidistribuzione possibile (Weyl + Knuth)
     \item \textbf{Nessuna tabella ausiliaria}: zero footprint di memoria aggiuntiva
     \item \textbf{$P$ potenza di 2}: lo shift \`e un parametro intero, nessun modulo
-    \item \textbf{Verificata empiricamente}: su $10^8$ chiavi con $P=256$, il rapporto tra il bucket pi\`u pieno e il valore atteso \`e $\approx 1.004$
+    \item \textbf{Verificata empiricamente}: su $10^8$ chiavi con $P=256$, il rapporto tra il bucket pi\`u pieno e il valore atteso \`e $\approx 1.005$
 \end{enumerate}
+
+\begin{warnbox}[title=\textbf{Perch\'e non una hash a 64 bit?}]
+La scelta iniziale naturale sarebbe $h(k) = (A_{64} \cdot k) \gg (64 - \log_2 P)$ con $A_{64} = \texttt{0x9E3779B97F4A7C15}$. Questa funziona perfettamente in scalare (un'istruzione \texttt{imul r64,r64}), ma \textbf{AVX2 non ha un'istruzione nativa per la moltiplicazione 64$\times$64 bit} (\texttt{\_mm256\_mullo\_epi64} \`e disponibile solo da AVX-512).
+
+La decomposizione della mul64 richiede 3$\times$ \texttt{vpmuludq} + 2 shift + 2 add, cio\`e circa 8 micro-operazioni per 4 chiavi (2 ops/chiave), contro 1 \texttt{imul} scalare per chiave. Come osservato nella slide 8 della lezione 7\&8: \emph{``not all intrinsic functions map one-to-one to a single instruction''}. In un kernel memory-bound questo overhead computazionale annulla il vantaggio del parallelismo SIMD.
+
+La hash XOR-fold a 32 bit risolve il problema: \texttt{vpmulld} (mullo\_epi32) \`e nativa e processa 8 chiavi per istruzione, ottenendo uno speedup AVX2 reale di $\sim$1.3$\times$.
+\end{warnbox}
 
 
 \subsection{SIMD e Vettorizzazione (Lezioni 7\&8)}
@@ -307,14 +320,19 @@ make test_correctness
 \subsubsection{Step 2.1: Scrivere il kernel}
 Il file \texttt{src/plain.cpp} contiene il kernel:
 \begin{lstlisting}
-void partition_map(const key_t* __restrict__ keys,
-                   part_t*      __restrict__ part_ids,
+void partition_map(const spm_key_t* __restrict__ keys,
+                   part_t*          __restrict__ part_ids,
                    size_t N, unsigned shift) {
     for (size_t i = 0; i < N; i++) {
-        part_ids[i] = static_cast<part_t>((HASH_A * keys[i]) >> shift);
+        uint32_t k_lo = static_cast<uint32_t>(keys[i]);
+        uint32_t k_hi = static_cast<uint32_t>(keys[i] >> 32);
+        uint32_t mixed = k_lo ^ k_hi;
+        part_ids[i] = (mixed * HASH_A32) >> shift;
     }
 }
 \end{lstlisting}
+
+La hash XOR-fold a 32 bit usa solo operazioni native in AVX2, favorendo l'auto-vettorizzazione con \texttt{vpmulld} (8 mul32 per istruzione).
 
 \textbf{Accorgimenti per favorire l'auto-vectorization}:
 \begin{itemize}
@@ -341,52 +359,59 @@ g++ -std=c++20 -O3 -march=native -mavx2 -ftree-vectorize \
 \subsubsection{Step 2.3: Verificare la vettorizzazione}
 \begin{lstlisting}[language=bash]
 cat results/vec_optimized.txt
-# Aspettati qualcosa come:
-# src/plain.cpp:35:5: optimized: loop vectorized using 32 byte vectors
+# Con la hash a 32 bit, il report mostrera':
+# src/plain.cpp:33:26: optimized: loop vectorized using 32 byte vectors
+# src/plain.cpp:33:26: optimized: loop vectorized using 16 byte vectors
 \end{lstlisting}
+
+Nota: GCC emette sia la versione a 256 bit (ymm) sia a 128 bit (xmm); a runtime sceglie quella pi\`u efficiente in base all'architettura. Su Zen 1, le operazioni a 256 bit vengono decomposte internamente in 2$\times$128 bit --- ma \texttt{vpmulld} rimane comunque un'istruzione \textbf{nativa}, molto pi\`u efficiente della decomposizione mul64 con 3$\times$ \texttt{vpmuludq}.
 
 \begin{warnbox}
 Se il report dice ``\texttt{not vectorized: ...}'', analizza il motivo:
 \begin{itemize}
-    \item ``\texttt{unsupported data type}'': la moltiplicazione 64-bit potrebbe non vettorizzarsi. Se accade, il compilatore potrebbe comunque vettorizzare parzialmente.
     \item ``\texttt{possible aliasing}'': aggiungi \texttt{\_\_restrict\_\_}
     \item ``\texttt{loop carried dependence}'': verifica che non ci siano dipendenze
 \end{itemize}
-Se GCC non riesce a vettorizzare il loop 64-bit multiply, \textbf{documentalo nel report}: \`e un risultato significativo che motiva l'uso degli intrinsics.
 \end{warnbox}
 
 
 \subsection{Fase 3: Implementazione AVX2 (Task 2)}
 
-\subsubsection{Step 3.1: La decomposizione della moltiplicazione}
-Il cuore dell'implementazione AVX2 \`e la funzione \texttt{mul64\_avx2}:
-\begin{lstlisting}
-static inline __m256i mul64_avx2(__m256i a, __m256i k) {
-    __m256i lo_lo = _mm256_mul_epu32(a, k);      // a_lo * k_lo
-    __m256i a_hi  = _mm256_srli_epi64(a, 32);
-    __m256i k_hi  = _mm256_srli_epi64(k, 32);
-    __m256i cross = _mm256_add_epi64(
-        _mm256_mul_epu32(a, k_hi),    // a_lo * k_hi
-        _mm256_mul_epu32(a_hi, k));   // a_hi * k_lo
-    cross = _mm256_slli_epi64(cross, 32);
-    return _mm256_add_epi64(lo_lo, cross);
-}
-\end{lstlisting}
+\subsubsection{Step 3.1: L'hash AVX2 con mul32 nativa}
+Grazie alla scelta della hash XOR-fold a 32 bit, l'implementazione AVX2 usa direttamente \texttt{\_mm256\_mullo\_epi32} --- un'istruzione nativa che esegue 8 moltiplicazioni 32$\times$32 in parallelo. Non serve alcuna decomposizione.
 
 \subsubsection{Step 3.2: Il loop principale}
+Il loop processa \textbf{8 chiavi per iterazione} (2 registri ymm in input $\to$ 1 registro ymm in output):
 \begin{lstlisting}
-for (size_t i = 0; i < simd_end; i += 4) {
-    __m256i vk   = _mm256_load_si256(&keys[i]);   // 4 chiavi
-    __m256i prod = mul64_avx2(va, vk);             // 4 prodotti
-    __m256i vhash = _mm256_srli_epi64(prod, shift);// 4 shift
-    // pack 4x64-bit -> 4x32-bit e store
-    ...
+for (size_t i = 0; i < simd_end; i += 8) {
+    // carica 8 chiavi uint64 in 2 registri ymm (4+4)
+    __m256i vk0 = _mm256_load_si256(&keys[i]);
+    __m256i vk1 = _mm256_load_si256(&keys[i+4]);
+    // XOR fold: k_lo ^ k_hi per ogni chiave
+    __m256i hi0 = _mm256_srli_epi64(vk0, 32);
+    __m256i hi1 = _mm256_srli_epi64(vk1, 32);
+    __m256i x0  = _mm256_xor_si256(vk0, hi0);
+    __m256i x1  = _mm256_xor_si256(vk1, hi1);
+    // pack: estrai i 32 bit bassi di ogni lane 64-bit
+    __m256i p0    = _mm256_permutevar8x32_epi32(x0, shuf);
+    __m256i p1    = _mm256_permutevar8x32_epi32(x1, shuf);
+    __m256i mixed = _mm256_permute2x128_si256(p0, p1, 0x20);
+    // Fibonacci mul32 nativa: 8 mul in 1 istruzione (vpmulld)
+    __m256i prod = _mm256_mullo_epi32(mixed, va32);
+    __m256i h    = _mm256_srli_epi32(prod, shift);
+    // scrivi 8 partition id
+    _mm256_storeu_si256(&part_ids[i], h);
 }
-// Tail: loop scalare per i rimanenti N%4 elementi
+// Tail: loop scalare per i rimanenti N%8 elementi
 \end{lstlisting}
 
-\subsubsection{Step 3.3: Packing del risultato}
-I partition id sono nei 32 bit bassi di ogni lane a 64 bit. Per scriverli come 4 \texttt{uint32\_t} consecutivi, usiamo \texttt{\_mm256\_permutevar8x32\_epi32} con indici \{0,2,4,6,...\} e poi \texttt{\_mm\_storeu\_si128} dei 128 bit bassi.
+\subsubsection{Step 3.3: Confronto con approccio mul64}
+Un approccio alternativo sarebbe usare una hash a 64 bit $(A_{64} \cdot k) \gg (64 - \log_2 P)$. Tuttavia AVX2 \textbf{non ha} \texttt{\_mm256\_mullo\_epi64}: servirebbero 3$\times$ \texttt{vpmuludq} + shift + add per emulare ogni mul64. Benchmark su node09:
+\begin{itemize}
+    \item Scalare (imul64): \(\sim\)910 Mkeys/s
+    \item AVX2 con mul64 decomp.: \(\sim\)880 Mkeys/s (\textbf{pi\`u lento} dello scalare!)
+    \item AVX2 con XOR-fold + mul32: \(\sim\)1200 Mkeys/s (\textbf{1.3$\times$} speedup)
+\end{itemize}
 
 \begin{tipbox}
 \textbf{Verifica}: dopo ogni modifica all'implementazione AVX2, esegui il test di correttezza per controllare che il checksum corrisponda al riferimento scalare.
@@ -399,11 +424,14 @@ I partition id sono nei 32 bit bassi di ogni lane a 64 bit. Per scriverli come 4
 \begin{lstlisting}
 __global__ void partition_map_cuda(const uint64_t* keys,
                                    uint32_t* part_ids,
-                                   size_t N, uint64_t hash_a,
+                                   size_t N, uint32_t hash_a32,
                                    unsigned shift) {
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < N)
-        part_ids[idx] = (uint32_t)((hash_a * keys[idx]) >> shift);
+    if (idx < N) {
+        uint32_t k_lo = (uint32_t)(keys[idx]);
+        uint32_t k_hi = (uint32_t)(keys[idx] >> 32);
+        part_ids[idx] = ((k_lo ^ k_hi) * hash_a32) >> shift;
+    }
 }
 \end{lstlisting}
 

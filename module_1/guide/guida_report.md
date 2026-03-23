@@ -31,29 +31,34 @@ precisi alle slide.
 Descrivi il problema (mapping N chiavi uint64_t → partition id in [0,P)),
 poi giustifica le tue due scelte chiave:
 
-#### 1a. Funzione hash: Fibonacci multiply-shift
+#### 1a. Funzione hash: XOR-fold + Fibonacci multiply-shift a 32 bit
 
 ```
-h(k) = (A · k) >> (64 − log₂P)      dove A = 0x9E3779B97F4A7C15
+h(k) = ((k_lo ⊕ k_hi) · A₃₂) >> (32 − log₂P)      dove A₃₂ = 0x9E3779B9
 ```
 
-Motiva la scelta con tre argomenti:
+Motiva la scelta con quattro argomenti:
 
-1. **Una sola moltiplicazione + uno shift** → nessuna divisione, nessun
-   modulo, nessun branch. È il tipo di operazione elementare che si
+1. **XOR + una moltiplicazione 32-bit + uno shift** → nessuna divisione,
+   nessun modulo, nessun branch. È il tipo di operazione elementare che si
    vettorizza meglio (cfr. L7&8 slide 7: *"the same instruction is
    broadcasted to all ALUs"* — la nostra operazione è identica per ogni
    chiave, senza divergenza).
 
-2. **P potenza di 2** → lo shift `(64 − log₂P)` è una costante nota a
-   compile-time, quindi il compilatore può ottimizzarlo. Nessuna necessità
-   di divisione o modulo.
+2. **SIMD-native**: la mul32 mappa direttamente su `_mm256_mullo_epi32`
+   (istruzione `vpmulld`), che è **nativa** in AVX2. A differenza di una
+   hash a 64 bit, che richiederebbe 3× `vpmuludq` per emulare il prodotto
+   (cfr. L7&8 slide 8: *"not all intrinsics map one-to-one to a single
+   instruction"*), qui l'intrinsic corrisponde esattamente a una sola
+   istruzione macchina.
 
-3. **Distribuzione quasi-uniforme**: A è il golden ratio scalato
-   (floor(2⁶⁴/φ)), che garantisce distribuzione quasi-universale con
-   probabilità di collisione ≤ 2/P per coppia di chiavi distinte.
-   I risultati sperimentali lo confermano: max/atteso ≤ 1.01 per
-   N=100M (vedi grafico 06_distribution_quality).
+3. **P potenza di 2** → lo shift `(32 − log₂P)` è una costante nota a
+   compile-time. Nessuna necessità di divisione o modulo.
+
+4. **Distribuzione quasi-uniforme**: A₃₂ è il golden ratio a 32 bit
+   (floor(2³²/φ)), e la XOR-fold preserva l'entropia di entrambe le metà
+   della chiave a 64 bit. I risultati sperimentali confermano:
+   max/atteso ≤ 1.005 per N=100M (vedi grafico 06_distribution_quality).
 
 #### 1b. Layout dati: SoA-like, stride unitario
 
@@ -90,13 +95,14 @@ loop, e poi analizzare **come** lo ha fatto.
 Includi l'excerpt del report GCC (dal file `results/vec_report_optimized.txt`):
 
 ```
-src/plain.cpp:28:26: optimized: loop vectorized using 16 byte vectors
+src/plain.cpp:33:26: optimized: loop vectorized using 32 byte vectors
+src/plain.cpp:33:26: optimized: loop vectorized using 16 byte vectors
 ```
 
 Spiega che:
 - Il compilatore ha riconosciuto il loop come vettorizzabile
-- Ha usato **vettori da 16 byte (128 bit, registri xmm)**, non da 32 byte
-  (256 bit, registri ymm)
+- Con la hash a 32 bit, GCC genera **sia** la versione a 256 bit (ymm)
+  **sia** quella a 128 bit (xmm); a runtime sceglie la più efficiente
 
 #### 2b. Perché il loop è vettorizzabile
 
@@ -108,31 +114,31 @@ Il nostro loop soddisfa tutte le condizioni:
   entry to the loop"*)
 - ✅ **Nessuna dipendenza tra iterazioni**: `part_ids[i]` dipende solo da
   `keys[i]`, mai da iterazioni precedenti (slide 34-35: niente RAW, WAR, WAW)
-- ✅ **Nessuna function call**: `HASH_A * keys[i] >> shift` è tutto inline
+- ✅ **Nessuna function call**: `(k_lo ^ k_hi) * A32 >> shift` è tutto inline
   (slide 40: *"No function calls"*)
 - ✅ **No aliasing**: uso di `__restrict__` su entrambi i puntatori
   (slide 38: *"Use __restrict__ to tell the compiler that there is no aliasing"*)
 - ✅ **Stride unitario**: accesso sequenziale a `keys[i]` e `part_ids[i]`
   (slide 39: *"Prefer unit stride access"*)
 
-#### 2c. Perché 128 bit e non 256 bit
+#### 2c. Vettorizzazione a 256 bit
 
-Punto critico. GCC 12 vettorizza la moltiplicazione 64-bit con registri
-xmm (128 bit = 2 lane da 64 bit), non ymm (256 bit = 4 lane). Questo è
-confermabile dal disassembly (`objdump -d bin/plain_autovec`): il loop
-principale usa solo istruzioni `vpmuludq %xmm`, mai `%ymm`.
+Con la hash a 32 bit, GCC può sfruttare pienamente `vpmulld` (256-bit,
+8 mul32 per istruzione). Il disassembly di `plain_autovec` mostra
+registri `ymm` nel loop principale, confermando la vettorizzazione
+completa a 256 bit.
 
-La ragione è architetturale: su AMD Zen 1 (EPYC 7551 di node09), le
-operazioni AVX2 a 256 bit sui registri ymm sono internamente decomposte
-dal processore in due micro-operazioni da 128 bit. GCC lo sa e preferisce
-emettere direttamente codice SSE a 128 bit, evitando l'overhead del
-`vzeroupper` e le penalità di transizione AVX↔SSE.
+Nota architetturale: su AMD Zen 1, le operazioni a 256 bit sono
+internamente decomposte in 2× micro-ops a 128 bit. Tuttavia
+`vpmulld` rimane nativa (non richiede decomposizione multi-istruzione
+come la mul64), quindi il costo è 2 cicli anziché i ~8 micro-ops
+necessari per emulare una mul64.
 
 #### Dati da includere
 
-- Snippet del report GCC (2-3 righe)
-- Breve excerpt del disassembly che mostra `xmm` (2-3 righe)
-- La spiegazione sopra (Zen 1 decompone ymm → 2× micro-ops)
+- Snippet del report GCC (2-3 righe, mostrare "32 byte vectors")
+- Breve excerpt del disassembly che mostra `vpmulld %ymm` (2-3 righe)
+- Il confronto: con hash64 GCC usava solo xmm, con hash32 usa ymm
 
 ---
 
@@ -140,43 +146,38 @@ emettere direttamente codice SSE a 128 bit, evitando l'overhead del
 
 ### Cosa scrivere
 
-#### 3a. Il problema: AVX2 non ha mul64 nativo
+#### 3a. La scelta: hash a 32 bit per AVX2 nativo
 
-AVX2 non fornisce `_mm256_mullo_epi64` (disponibile solo da AVX-512).
-L'unica primitiva di moltiplicazione intera è `_mm256_mul_epu32`, che
-moltiplica i 32 bit bassi di ogni lane a 64 bit producendo un risultato
-a 64 bit.
+Il punto chiave dell'implementazione è la scelta della hash function.
+AVX2 non fornisce `_mm256_mullo_epi64` (disponibile solo da AVX-512),
+ma fornisce `_mm256_mullo_epi32` (istruzione `vpmulld`) che esegue
+**8 moltiplicazioni 32×32 in una sola istruzione**.
 
 Cita L7&8 slide 8: *"Not all intrinsic functions map one-to-one to a
 single assembly instruction — some may be implemented using multiple
-instructions"*. Questo è esattamente il nostro caso: la mul64 richiede
-una decomposizione manuale.
+instructions"*. Proprio per evitare questo problema, abbiamo scelto una
+hash che opera nativamente a 32 bit.
 
-#### 3b. La decomposizione
+#### 3b. Il loop AVX2
 
-Spiega la formula algebrica:
-
-```
-A·k mod 2⁶⁴ = A_lo·k_lo + (A_lo·k_hi + A_hi·k_lo) << 32
-```
-
-dove `A_hi·k_hi << 64` trabocca e viene ignorato.
-
-Elenco delle intrinsics usate per 4 chiavi in parallelo:
+Elenco delle intrinsics usate per **8 chiavi** per iterazione:
 
 | Istruzione               | Operazione                    | Lane |
 |--------------------------|-------------------------------|------|
-| `_mm256_load_si256`      | Carica 4 chiavi (aligned)     | 4×64 |
-| `_mm256_mul_epu32`  ×3   | `lo·lo`, `lo·k_hi`, `hi·k_lo`| 4×64 |
-| `_mm256_srli_epi64`      | Estrai 32 bit alti            | 4×64 |
-| `_mm256_add_epi64`  ×2   | Somma cross-terms + lo·lo     | 4×64 |
-| `_mm256_slli_epi64`      | Shift sx cross-terms di 32    | 4×64 |
-| `_mm256_srli_epi64`      | Shift dx finale (÷ partition) | 4×64 |
-| `_mm256_permutevar8x32`  | Pack 4×64 → 4×32 contigui    | 8×32 |
-| `_mm_storeu_si128`       | Scrivi 4 partition id         | 4×32 |
+| `_mm256_load_si256` ×2   | Carica 8 chiavi (4+4, aligned)| 4×64 |
+| `_mm256_srli_epi64` ×2   | Estrai k_hi (32 bit alti)     | 4×64 |
+| `_mm256_xor_si256`  ×2   | XOR fold: k_lo ⊕ k_hi        | 4×64 |
+| `_mm256_permutevar8x32` ×2 | Pack 32 bit bassi            | 8×32 |
+| `_mm256_permute2x128`    | Combina 4+4 → 8 valori        | 8×32 |
+| `_mm256_mullo_epi32`     | **Fibonacci mul32 (NATIVA!)**  | 8×32 |
+| `_mm256_srli_epi32`      | Shift dx per partition id      | 8×32 |
+| `_mm256_storeu_si256`    | Scrivi 8 partition id          | 8×32 |
 
-**Totale**: ~11 istruzioni SIMD per 4 chiavi = **~2.75 istruzioni/chiave**.
-Lo scalare usa 1 `IMUL` per chiave.
+**Totale**: ~10 istruzioni SIMD per 8 chiavi = **~1.25 istruzioni/chiave**.
+
+Confronto con l'alternativa mul64 (che abbiamo provato e scartato):
+~11 istruzioni SIMD per 4 chiavi = ~2.75 istruzioni/chiave, e
+**risultava più lento dello scalare** (1 `imul r64,r64` per chiave).
 
 #### 3c. Correttezza
 
@@ -246,64 +247,51 @@ Seguendo l'approccio di L5&6 slide 5:
 ```
 Per N = 200M chiavi:
 
-t_comp = N × (1 ciclo IMUL) / freq
-       = 200×10⁶ / (2×10⁹ Hz)
-       = 100 ms
+t_comp(scalare) = N × (~2 cicli XOR+MUL+SHIFT) / freq
+                = 200×10⁶ × 2 / (2.7×10⁹ Hz)
+                ≈ 148 ms
 
 t_mem  = (N × 12 byte) / BW_singolo_core
-       = 2.4 GB / ~15 GB/s
-       ≈ 160 ms
+       = 2.4 GB / ~16.4 GB/s
+       ≈ 146 ms
 
-t_exec ≥ max(t_comp, t_mem) = 160 ms    → MEMORY BOUND
+t_exec ≥ max(t_comp, t_mem) ≈ 148 ms    → AL CONFINE compute/memory
 ```
 
-Il tempo osservato (~184 ms) è coerente con `t_mem` stimato,
-confermando che il bottleneck è la bandwidth DRAM.
+Il tempo osservato (~220 ms baseline, ~165 ms AVX2) è coerente:
+lo scalare è al confine, e AVX2 accelera il compute portando il
+kernel più chiaramente nel regime **memory-bound** (come si vede
+nel grafico Roofline 14_roofline).
 
-#### Passo 3: spiega perché AVX2 intrinsics è più lento
+#### Passo 3: spiega lo speedup AVX2
 
 Dalla lezione L7&8 slide 7: *"Performance improvement (speedup) is
-roughly vector_width × efficiency"*. Con 4 lane a 256 bit il fattore
-teorico è 4×, ma l'efficiency è bassissima perché il kernel è quasi
-memory-bound.
+roughly vector_width × efficiency"*. Con 8 lane a 32 bit il fattore
+teorico è 8×, ma lo speedup osservato è solo ~1.3×. Perché?
 
-Per quantificare, un micro-benchmark di "copia pura" (read 8B + write 4B,
-zero compute) mostra il ceiling effettivo della BW a ~14.4 GB/s su node09.
-Lo scalare raggiunge 13.4 GB/s (93% del ceiling), confermando che il
-margine sfruttabile è solo ~7%.
+**Il Roofline spiega tutto**: a OI = 0.33 ops/byte, la performance
+è limitata dalla bandwidth (B_peak × OI = 16.4 × 0.33 = 5.47 Gops/s).
+AVX2 accelera il compute (R_peak da 5.17 a 15.28 Gops/s) ma non
+può superare il tetto di bandwidth.
 
-L'**autovec GCC** guadagna ~2-3% perché vettorizza a 128-bit (SSE) con
-la stessa decomposizione mul32 dello scalare, riducendo il loop overhead.
-
-L'**AVX2 intrinsics** (3× `vpmuludq`) è **5% più lento** dello scalare
-perché la decomposizione mul64 richiede 3 moltiplicazioni + 2 add + 2
-shift per 4 chiavi, saturando le porte di esecuzione della CPU e
-rallentando l'emissione (issue) delle istruzioni di load/store. In un
-kernel quasi memory-bound, qualsiasi compute aggiuntivo che compete per
-le porte di issue riduce la bandwidth effettiva.
-
-A conferma, una variante a **2 mul** (che omette un cross-term,
-sacrificando l'identità bit-per-bit dell'output) raggiunge 14.1 GB/s
-(98% del ceiling), dimostrando che il problema è specificamente il
-**numero di istruzioni mul**, non il paradigma SIMD in sé.
-
-Nota: la traccia richiede output identico tra implementazioni
-(*"It must produce identical output"*), quindi la versione 3-mul
-è obbligatoria nonostante il costo.
+L'**autovec GCC** (1.43×) batte l'**AVX2 intrinsics** (1.31×) perché
+GCC applica loop unrolling e software pipelining automatici che
+migliorano l'utilizzo della bandwidth (meno overhead per istruzioni
+di controllo → prefetcher più efficace → BW effettiva più alta).
 
 #### Passo 4: verifica con la bandwidth
 
 Calcola la bandwidth effettivamente utilizzata:
 
 ```
-BW = throughput × 12 byte/chiave
-   = 1084 Mkeys/s × 12 B
-   = 13.0 GB/s
+BW(baseline) = 910 Mkeys/s × 12 B = 10.9 GB/s  (67% di B_peak)
+BW(autovec)  = 1310 Mkeys/s × 12 B = 15.7 GB/s (96% di B_peak!)
+BW(AVX2)     = 1200 Mkeys/s × 12 B = 14.4 GB/s (88% di B_peak)
 ```
 
-Questo è coerente con la bandwidth accessibile da un singolo core su
-EPYC 7551 (DDR4, ~15-20 GB/s per core stimati; il nostro kernel ne usa
-~65-85%).
+L'autovec raggiunge il 96% della bandwidth picco! Questo conferma
+che il kernel è quasi perfettamente ottimizzato nel regime
+memory-bound — non c'è praticamente margine residuo.
 
 ### 4d. Sweep P
 
