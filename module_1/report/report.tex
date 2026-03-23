@@ -52,7 +52,7 @@ where $k_\text{lo}$, $k_\text{hi}$ are the lower and upper 32 bits of the 64-bit
 \textbf{Why this function.} The choice is driven by three considerations:
 
 \begin{enumerate}
-  \item \textbf{SIMD-native}: the core operation is a 32-bit multiply, which maps to \texttt{vpmulld}---a native AVX2 instruction processing 8~elements at once. A~64-bit hash would need $3\times$~\texttt{vpmuludq} decomposition, since AVX2 lacks \texttt{mullo\_epi64} (L7\&8 slide~8: \emph{``not all intrinsics map one-to-one to a single instruction''}).
+  \item \textbf{SIMD-native}: the core operation is a 32-bit multiply, which maps to \texttt{vpmulld}---a native AVX2 instruction processing 8~elements at once. A~64-bit hash would need $3\times$~\texttt{vpmuludq} decomposition, since AVX2 lacks \texttt{mullo\_epi64}.
 
   \item \textbf{Entropy preservation}: $k_\text{lo} \oplus k_\text{hi}$ combines both key halves; the Fibonacci constant provides quasi-universal hashing (collision $\leq 2/P$).
 
@@ -63,7 +63,7 @@ where $k_\text{lo}$, $k_\text{hi}$ are the lower and upper 32 bits of the 64-bit
 
 \subsection{Data Layout}
 
-Keys and partition IDs are stored in separate contiguous arrays (\texttt{uint64\_t[]} and \texttt{uint32\_t[]}), accessed with unit stride. This SoA-like layout is optimal for vectorization (L7\&8 slide~30, 39). Memory is aligned to 32~bytes via \texttt{posix\_memalign} for efficient AVX2 loads.
+Keys and partition IDs are stored in separate contiguous arrays (\texttt{uint64\_t[]} and \texttt{uint32\_t[]}), accessed with unit stride. This SoA-like layout is optimal for vectorization. Memory is aligned to 32~bytes via \texttt{posix\_memalign} for efficient AVX2 loads.
 
 % ===========================================================================
 \section{Auto-vectorization Evidence}
@@ -86,7 +86,7 @@ src/plain.cpp:33:26: optimized: loop vectorized
 
 The compiler generates both 256-bit (ymm) and 128-bit (xmm) versions; at runtime, the most efficient variant is selected. The key enabler is that the hash uses \texttt{mul32}, which maps to \texttt{vpmulld}---a native instruction. With a mul64 hash, GCC would only emit 128-bit code using the decomposed \texttt{vpmuludq}.
 
-\textbf{Vectorizability conditions} (L7\&8 slide~34): all are satisfied---fixed trip count, no inter-iteration dependencies, no function calls, \texttt{\_\_restrict\_\_} for aliasing, unit stride access, and a SIMD-native operation.
+\textbf{Vectorizability conditions}: all are satisfied---fixed trip count, no inter-iteration dependencies, no function calls, \texttt{\_\_restrict\_\_} for aliasing, unit stride access, and a SIMD-native operation.
 
 % ===========================================================================
 \section{AVX2 Intrinsics Strategy}
@@ -153,7 +153,7 @@ The kernel transfers 12 bytes per key (8\,B input + 4\,B output) and performs $\
 I = \frac{4\text{ ops}}{12\text{ bytes}} = 0.33\text{ ops/byte}
 \end{equation}
 
-Using the roofline model (L5\&6 slide~49): $P = \min(R_\text{peak},\, I \times B_\text{peak})$, with hardware parameters measured on node09:
+Using the roofline model: $P = \min(R_\text{peak},\, I \times B_\text{peak})$, with hardware parameters measured on node09:
 \begin{itemize}
   \item $B_\text{peak} = 16.4$ GB/s (single-core, measured via AVX2 copy)
   \item $R_\text{peak}^\text{scalar} = 5.17$ Gops/s
@@ -173,9 +173,9 @@ The attainable performance ceiling at $I\!=\!0.33$ is $I \times B_\text{peak} = 
 
 \textbf{Why autovec $>$ AVX2 intrinsics}: GCC applies loop unrolling and instruction scheduling that our intrinsics code does not benefit from, achieving higher effective bandwidth (15.7 vs 14.4\,GB/s).
 
-\subsection{SIMD Metrics (L10)}
+\subsection{SIMD Efficiency and Amdahl's Interpretation}
 
-Applying the L10 performance metrics to SIMD parallelism, where $p\!=\!8$ (AVX2 256-bit, 8 uint32 lanes):
+Applying standard parallel performance metrics to SIMD parallelism, where $p\!=\!8$ (AVX2 256-bit, 8 uint32 lanes):
 
 \begin{table}[h]
 \centering\small
@@ -191,7 +191,7 @@ Cost $C(p) = T_\text{par} \times p$ & $5.5 \times T_\text{seq}$ & $6.3 \times T_
 \caption{SIMD metrics at $N\!=\!200$M, $P\!=\!256$, $p\!=\!8$.}
 \end{table}
 
-The efficiency of $\sim$16--18\% is characteristic of memory-bound kernels: SIMD lanes spend most of their time stalled waiting for data. Interpreting via Amdahl's law (L10 slide~25), the effective serial fraction is $f \approx 64\%$, which corresponds to the memory transfer time that cannot be parallelized by SIMD. Even with $p\!\to\!\infty$ (wider SIMD or AVX-512), the theoretical maximum speedup would be only $1/f \approx 1.56\times$.
+The efficiency of $\sim$16--18\% is characteristic of memory-bound kernels: SIMD lanes spend most of their time stalled waiting for data. Interpreting via Amdahl's law, the effective serial fraction is $f \approx 64\%$, which corresponds to the memory transfer time that cannot be parallelized by SIMD. Even with $p\!\to\!\infty$ (wider SIMD or AVX-512), the theoretical maximum speedup would be only $1/f \approx 1.56\times$.
 
 \subsection{Sweeps}
 
@@ -208,7 +208,7 @@ The efficiency of $\sim$16--18\% is characteristic of memory-bound kernels: SIMD
 
 \subsection{Measurement Stability}
 
-Coefficient of variation $<5\%$ for all configurations, ensured by exclusive SLURM allocation (L4) and 11~repetitions with median reporting.
+Coefficient of variation $<5\%$ for all configurations, ensured by exclusive SLURM allocation and 11~repetitions with median reporting.
 
 % ===========================================================================
 \section{CUDA Implementation}
@@ -233,7 +233,7 @@ D$\to$H transfer & 32.3 & 12.4 & 33.3\% \\
 \label{tab:cuda}
 \end{table}
 
-The kernel alone achieves 67\,320 Mkeys/s = 808\,GB/s, utilizing \textbf{81\%} of the A30's HBM2 peak (993\,GB/s, L9 slide~24). However, PCIe 4.0 transfers dominate end-to-end time (\textbf{98.5\%}), making GPU offload of this isolated kernel no faster than the CPU. GPU offload would become advantageous only if the data were already resident in GPU memory or if subsequent pipeline stages also executed on GPU.
+The kernel alone achieves 67\,320 Mkeys/s = 808\,GB/s, utilizing \textbf{81\%} of the A30's HBM2 peak (993\,GB/s). However, PCIe 4.0 transfers dominate end-to-end time (\textbf{98.5\%}), making GPU offload of this isolated kernel no faster than the CPU. GPU offload would become advantageous only if the data were already resident in GPU memory or if subsequent pipeline stages also executed on GPU.
 
 % ===========================================================================
 \section{Conclusions}
