@@ -180,7 +180,7 @@ Questo spiega perché il passaggio da scalare a AVX2 sposta il bottleneck da com
 Il tetto di bandwidth al nostro $I$:
 $$P_\text{bw} = I \times B_\text{peak} = 0.333 \times 16.4 = 5.47 \text{ Gops/s}$$
 
-L'autovec misurato raggiunge 5.29 Gops/s = \textbf{97\% del tetto di bandwidth}. Il kernel è essenzialmente \textit{bandwidth-saturated}.
+L'autovec misurato raggiunge 5.24 Gops/s = \textbf{96\% del tetto di bandwidth}. Il kernel è essenzialmente \textit{bandwidth-saturated}.
 
 
 \subsection{Modello SIMD (L7\&8, slide 7)}
@@ -245,11 +245,26 @@ Data una chiave $k \in U = \{0, \ldots, 2^{64}-1\}$ e un numero di partizioni $P
 \end{itemize}
 \end{theorybox}
 
-\subsubsection{Universal Hashing e Multiply-Shift}
-Dalla classe universale Multiply-Add-Shift (Dietzfelbinger):
+\subsubsection{Hashing by Division ($k \bmod P$)}
+Il metodo più semplice. \textbf{Problema}: l'operazione modulo è costosa (divisione intera), e se $P$ è potenza di 2 si riduce a una maschera di bit ($k\ \&\ (P-1)$), ma questo considera solo i bit \textbf{meno significativi} della chiave --- distribuzione pessima per chiavi con pattern nei bit bassi.
+
+\subsubsection{Universal Hashing e Multiply-Add-Shift}
+Dalla classe universale Multiply-Add-Shift (Dietzfelbinger et al., 1997):
 $$h_{a,b}(k) = \left\lfloor \frac{(ak + b) \bmod 2^w}{2^{w-\ell}} \right\rfloor$$
-Semplificando con $b=0$ (quasi-universale, collisione $\leq 2/m$ invece di $1/m$):
+dove $a$ è un intero \textbf{dispari} $< 2^w$ e $b \geq 0$. Questa classe è \textbf{2-universale}: per ogni coppia di chiavi distinte $x \neq y$, la probabilità di collisione è al più $1/m$.
+
+\paragraph{Semplificazione $b=0$ (Multiply-Shift).}
+Ponendo $b = 0$ si ottiene la variante \textit{quasi-universale} (collisione $\leq 2/m$):
 $$h_a(k) = (A \cdot k) \gg (w - \log_2 P)$$
+Per il partizionamento (non una hash table con chaining), la garanzia $\leq 2/P$ è ampiamente sufficiente. In cambio, risparmiamo un'addizione per chiave --- significativo in un kernel streaming su centinaia di milioni di chiavi.
+
+\paragraph{La costante $A$: perché il golden ratio.}
+La costante $A$ non basta che sia dispari --- è necessario (per garantire biiezione in $\mathbb{Z}_{2^w}$), ma non sufficiente per buona distribuzione pratica ($a=1$ e $a=3$ sono dispari ma pessimi). La scelta $A = \lfloor 2^w / \varphi \rfloor$ (dove $\varphi = (1+\sqrt{5})/2$) ha tre proprietà speciali:
+\begin{enumerate}
+    \item \textbf{Equidistribuzione di Weyl}: la sequenza $\{k \cdot \alpha\}$ (parte frazionaria) è equidistribuita mod~1 per ogni irrazionale $\alpha$. Il reciproco del golden ratio $1/\varphi$ è il numero ``più irrazionale'' --- convergenza più lenta con frazioni continue $\Rightarrow$ massima uniformità (Knuth, TAOCP Vol.~3, §6.4).
+    \item \textbf{Bit-mixing}: la rappresentazione binaria di \texttt{0x9E3779B9} ha una miscela quasi bilanciata di 0 e 1 distribuiti irregolarmente. Ogni bit del risultato dipende da molti bit dell'input.
+    \item \textbf{Dispari per costruzione}: $\lfloor 2^{32}/\varphi \rfloor$ è dispari, soddisfacendo automaticamente il requisito formale.
+\end{enumerate}
 
 \subsubsection{La nostra scelta: XOR-fold + Fibonacci mul32}
 
@@ -305,10 +320,13 @@ inline part_t hash_key(spm_key_t key, unsigned shift32) {
 
 \paragraph{Generatore chiavi deterministico.} Usa xoshiro256** (Blackman--Vigna), inizializzato con SplitMix64 dal seed. Il parametro \texttt{key\_space} permette di controllare i duplicati ($\texttt{key} \bmod \texttt{key\_space}$).
 
-\paragraph{Checksum FNV-1a.} Per la verifica di correttezza senza stampare $N$ valori:
+\paragraph{Checksum FNV-1a: perché funziona come verifica di correttezza.}
+
+La traccia richiede ``\textit{a verification strategy that can detect mismatches without printing the full output array}''. Usiamo FNV-1a (Fowler--Noll--Vo), un hash non crittografico progettato per avere ottime proprietà di \textit{avalanche}:
+
 \begin{lstlisting}
 inline uint64_t compute_checksum(const part_t* part_ids, size_t N) {
-    uint64_t h = 0xCBF29CE484222325ULL;
+    uint64_t h = 0xCBF29CE484222325ULL;  // offset basis
     for (size_t i = 0; i < N; i++) {
         h ^= static_cast<uint64_t>(part_ids[i]);
         h *= 0x100000001B3ULL;  // FNV prime
@@ -316,6 +334,19 @@ inline uint64_t compute_checksum(const part_t* part_ids, size_t N) {
     return h;
 }
 \end{lstlisting}
+
+\begin{theorybox}[title=\textbf{Perché il checksum assicura correttezza}]
+\begin{enumerate}
+    \item \textbf{Sensibilità alla posizione}: FNV-1a è \textit{order-dependent} --- XOR + moltiplicazione ad ogni passo fanno sì che cambiare anche un solo \texttt{part\_ids[i]} o scambiarne due produca un hash completamente diverso (effetto valanga). Non è un semplice XOR o somma degli elementi (che sarebbero commutative e insensibili all'ordine).
+    \item \textbf{Probabilità di falso positivo}: con un output a 64 bit, la probabilità che due array diversi producano lo stesso checksum è $\lesssim 2^{-64} \approx 5.4 \times 10^{-20}$. In pratica: se i checksum coincidono, gli array sono identici.
+    \item \textbf{Costo $O(N)$}: il checksum si calcola in un singolo passaggio sull'array, senza allocazione aggiuntiva. Per $N=10^8$ chiavi, sono $\sim$400 MB di dati --- stampare e confrontare sarebbe impraticabile.
+    \item \textbf{Confronto cross-implementazione}: tutte le versioni (baseline, autovec, AVX2, CUDA) calcolano lo stesso checksum sullo stesso output. Se i 4 checksum coincidono, le 4 implementazioni producono \textbf{esattamente} lo stesso array.
+\end{enumerate}
+\end{theorybox}
+
+\begin{warnbox}[title=\textbf{Limiti del checksum}]
+Un checksum \textbf{non dimostra} che l'output sia ``corretto'' in senso assoluto --- dimostra solo che tutte le implementazioni producono lo \textbf{stesso} output. Se tutte avessero lo stesso bug, il checksum coinciderebbe comunque. Per questo la traccia richiede anche il confronto element-wise per $N$ piccolo e la verifica della distribuzione tra partizioni.
+\end{warnbox}
 
 \paragraph{Allocazione allineata.} Usa \texttt{posix\_memalign} (non \texttt{std::aligned\_alloc} che non è disponibile su macOS Apple libc++). L'allineamento a 32 byte è richiesto da \texttt{\_mm256\_load\_si256}.
 
@@ -543,8 +574,8 @@ CUDA end-to-end   &  97.0 & 1\,031 & 1.12$\times$ & 12.4 \\
 \begin{itemize}
     \item Operational intensity: $I = 4/12 = 0.333$ ops/byte
     \item Tetto di bandwidth: $I \times B_\text{peak} = 0.333 \times 16.4 = 5.47$ Gops/s
-    \item Autovec raggiunge 5.29 Gops/s = \textbf{97\% del tetto}
-    \item AVX2 raggiunge 4.84 Gops/s = \textbf{88\% del tetto}
+    \item Autovec raggiunge 5.24 Gops/s = \textbf{96\% del tetto}
+    \item AVX2 raggiunge 4.80 Gops/s = \textbf{88\% del tetto}
     \item Baseline raggiunge 3.67 Gops/s = \textbf{67\% del tetto}
 \end{itemize}
 Tutte le implementazioni sono nella \textbf{regione bandwidth-bound} del Roofline.

@@ -134,12 +134,12 @@ All benchmarks run on \textbf{node09} (AMD EPYC 7301, Zen~1, 2.7\,GHz boost, DDR
 \textbf{Version} & \textbf{Throughput} & \textbf{Speedup} & \textbf{BW} \\
  & (Mkeys/s) & (vs baseline) & (GB/s) \\
 \midrule
-Baseline (no-vec) & 910 & 1.00$\times$ & 10.9 \\
+Baseline (no-vec) & 918 & 1.00$\times$ & 11.0 \\
 Auto-vectorized   & 1310 & 1.43$\times$ & 15.7 \\
 AVX2 intrinsics   & 1200 & 1.31$\times$ & 14.4 \\
 \midrule
-CUDA kernel-only  & 67\,320 & 73.8$\times$ & 808 \\
-CUDA end-to-end   & 1\,031 & 1.13$\times$ & 12.4 \\
+CUDA kernel-only  & 67\,320 & 73.4$\times$ & 808 \\
+CUDA end-to-end   & 1\,031 & 1.12$\times$ & 12.4 \\
 \bottomrule
 \end{tabular}
 \caption{Performance at $N\!=\!100$M, $P\!=\!256$. BW computed as throughput $\times$ 12\,B/key (8\,B read + 4\,B write).}
@@ -160,7 +160,7 @@ Using the roofline model: $P = \min(R_\text{peak},\, I \times B_\text{peak})$, w
   \item $R_\text{peak}^\text{AVX2} = 15.28$ Gops/s
 \end{itemize}
 
-The attainable performance ceiling at $I\!=\!0.33$ is $I \times B_\text{peak} = 5.47$ Gops/s. The auto-vectorized version achieves 5.29 Gops/s = \textbf{97\% of the bandwidth ceiling}. Figure~\ref{fig:roofline} confirms all three implementations lie on the bandwidth ramp.
+The attainable performance ceiling at $I\!=\!0.33$ is $I \times B_\text{peak} = 5.47$ Gops/s. The auto-vectorized version achieves 5.24 Gops/s = \textbf{96\% of the bandwidth ceiling}. Figure~\ref{fig:roofline} confirms all three implementations lie on the bandwidth ramp.
 
 \begin{figure}[h]
 \centering
