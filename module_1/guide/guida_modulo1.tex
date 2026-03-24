@@ -161,18 +161,27 @@ I &= \frac{4 \text{ ops}}{12 \text{ byte}} = 0.333 \text{ ops/byte} \label{eq:oi
 \end{align}
 
 \begin{resultbox}[title=\textbf{Parametri hardware misurati su node09 (micro-benchmark)}]
+I valori di picco non sono forniti nelle slide del corso per node09 (le slide usano un sistema ipotetico generico). Sono stati quindi \textbf{misurati direttamente} su node09 con micro-benchmark dedicati:
+
 \begin{itemize}
-    \item $B_\text{peak} = 16.4$ GB/s (single-core, misurato con STREAM-like AVX2 copy)
-    \item $R_\text{peak}^\text{scalar} = 5.17$ Gops/s (4 catene indipendenti XOR+MUL+SHIFT)
-    \item $R_\text{peak}^\text{AVX2} = 15.28$ Gops/s (4 catene $\times$ 8 elementi)
+    \item $B_\text{peak} = 16.4$ GB/s (single-core, misurato con STREAM-like AVX2 copy).\\
+    \textit{Plausibilità}: DDR4-2666 fornisce 21.3 GB/s per canale; un singolo core non satura tutti gli 8 canali del socket, ma la BW misurata è coerente con studi su Zen~1 single-thread.
+    \item $R_\text{peak}^\text{scalar} = 5.17$ Gops/s (4 catene indipendenti XOR+MUL+SHIFT).\\
+    \textit{Plausibilità}: EPYC 7301 boost a 2.7 GHz, \texttt{imul r64,r64} throughput 1/ciclo. Con 4 catene: $\sim$2.7 $\times$ 4 $\times$ ops/ciclo $\approx$ 5.2 Gops/s.
+    \item $R_\text{peak}^\text{AVX2} = 15.28$ Gops/s (4 catene $\times$ 8 elementi).\\
+    \textit{Plausibilità}: Zen~1 decompone \texttt{vpmulld ymm} in 2$\times$128-bit; con 4 catene e 8 elem/istr: $\sim$2.7 GHz $\times$ 8 $\times$ eff $\approx$ 15 Gops/s.
 \end{itemize}
+
+\textbf{Nota sulla slide L5\&6}: le slide definiscono il Roofline con un sistema ipotetico (384 GFLOPS, 51.2 GiB/s). Per la nostra analisi usiamo i valori misurati perché il Roofline ha senso solo con $B_\text{peak}$ e $R_\text{peak}$ reali della macchina target (come suggerito nella slide 55 di L5\&6: ``\textit{$B$ must be measured through some benchmarks, e.g., the stream benchmark}'').
+
+\medskip
 Ridge point scalare: $I^* = 5.17 / 16.4 = 0.315$ ops/byte.\\
 Ridge point AVX2: $I^* = 15.28 / 16.4 = 0.932$ ops/byte.
 
 Il nostro kernel ha $I = 0.333$, che è:
 \begin{itemize}
-    \item Appena \textbf{sopra} il ridge point scalare ($0.333 > 0.315$) → leggermente compute-bound in scalare
-    \item \textbf{Sotto} il ridge point AVX2 ($0.333 < 0.932$) → fortemente memory-bound con SIMD
+    \item Appena \textbf{sopra} il ridge point scalare ($0.333 > 0.315$) $\to$ leggermente compute-bound in scalare
+    \item \textbf{Sotto} il ridge point AVX2 ($0.333 < 0.932$) $\to$ fortemente memory-bound con SIMD
 \end{itemize}
 Questo spiega perché il passaggio da scalare a AVX2 sposta il bottleneck da compute a memoria.
 \end{resultbox}
