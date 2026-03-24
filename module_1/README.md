@@ -122,7 +122,7 @@ Plots are saved to `results/plots/`.
 ## Test Environment
 
 - **Cluster**: spmcluster.unipi.it, node09 (gpu-excl partition, exclusive access)
-- **CPU**: AMD EPYC 7313 (Zen 3), 2 sockets × 16 cores, DDR4
+- **CPU**: AMD EPYC 7301 (Zen 1 / Naples), 2 sockets × 16 cores × 2 threads = 64 CPUs, DDR4-2666
 - **GPU**: NVIDIA A30 (HBM2, 993 GB/s, PCIe 4.0 x16)
-- **Compiler**: GCC 11, CUDA 12.3
-- **OS**: Linux 5.15
+- **Compiler**: GCC 12.2, nvcc (CUDA 12.3)
+- **OS**: Linux (OpenHPC)

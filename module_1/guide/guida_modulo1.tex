@@ -31,6 +31,7 @@
 \definecolor{warnbg}{rgb}{1.0,0.95,0.85}
 \definecolor{tipbg}{rgb}{0.88,0.97,0.88}
 \definecolor{theorybg}{rgb}{0.90,0.92,1.0}
+\definecolor{resultbg}{rgb}{1.0,0.96,0.96}
 
 \lstset{
   language=C++,
@@ -50,6 +51,7 @@
 \newtcolorbox{warnbox}[1][]{colback=warnbg,colframe=orange!80!black,title={\textbf{Attenzione}},#1}
 \newtcolorbox{tipbox}[1][]{colback=tipbg,colframe=green!60!black,title={\textbf{Suggerimento}},#1}
 \newtcolorbox{theorybox}[1][]{colback=theorybg,colframe=blue!60!black,title={\textbf{Teoria}},#1}
+\newtcolorbox{resultbox}[1][]{colback=resultbg,colframe=red!60!black,title={\textbf{Risultato misurato}},#1}
 
 \pagestyle{fancy}
 \fancyhf{}
@@ -58,7 +60,7 @@
 \cfoot{\thepage}
 
 % ============================================================================
-\title{\textbf{Guida Implementativa\\SPM Modulo 1: Partition Mapping Kernel}\\[0.5em]
+\title{\textbf{Guida Implementativa Completa\\SPM Modulo 1: Partition Mapping Kernel}\\[0.5em]
 \large Vectorizzazione del Kernel di Mapping Chiave$\to$Partizione}
 \author{Corso SPM --- A.Y. 2025/26}
 \date{Ultimo aggiornamento: \today}
@@ -74,9 +76,11 @@
 % ############################################################################
 
 \subsection{Obiettivo}
-Implementare un kernel ad alte prestazioni che mappa un array di $N$ chiavi \texttt{uint64\_t} ad un array di partition identifier $\texttt{part\_id}[i] \in [0, P)$, dove $P$ \`e una potenza di 2. Questo \`e il primo stadio di un \textit{partitioned hash join with duplicates}.
+Implementare un kernel ad alte prestazioni che mappa un array di $N$ chiavi \texttt{uint64\_t} ad un array di partition identifier $\texttt{part\_id}[i] \in [0, P)$, dove $P$ è una potenza di 2. Questo è il primo stadio di un \textit{partitioned hash join with duplicates}.
 
-\subsection{Deliverables richiesti}
+\textbf{Citazione dalla traccia}: ``\textit{The goal is not only to obtain speedups, but also to understand what limits performance.}''
+
+\subsection{Deliverables richiesti dalla traccia}
 \begin{enumerate}
     \item \textbf{Plain C++} (senza intrinsics): due binari dallo stesso sorgente:
     \begin{itemize}
@@ -92,233 +96,237 @@ Implementare un kernel ad alte prestazioni che mappa un array di $N$ chiavi \tex
 \subsection{Struttura del progetto}
 \begin{verbatim}
 module_1/
-├── Makefile
-├── README.md
-├── include/common.hpp       # tipi, hash, keygen, timing, checksum
+├── Makefile                  # Build system (arch-detection automatica)
+├── README.md                 # Istruzioni complete
+├── include/common.hpp        # tipi, hash, keygen, timing, checksum, mmap
 ├── src/
-│   ├── plain.cpp            # C++ plain → baseline + autovec
-│   ├── avx2.cpp             # AVX2 intrinsics
-│   └── cuda_kernel.cu       # CUDA (opzionale)
+│   ├── plain.cpp             # C++ plain → baseline + autovec
+│   ├── avx2.cpp              # AVX2 intrinsics + verifica integrata
+│   ├── cuda_kernel.cu        # CUDA con timing separati
+│   └── dataset_creator.cpp   # Generatore dataset binari
 ├── scripts/
-│   ├── run_bench.sh         # SLURM batch CPU benchmarks
-│   └── run_cuda.sh          # SLURM batch CUDA benchmarks
-├── results/                 # output benchmark + vec reports
-├── report/                  # PDF report finale
-└── guide/                   # questa guida
+│   ├── run_bench.sh          # SLURM batch CPU (3 esperimenti)
+│   └── run_cuda.sh           # SLURM batch CUDA
+├── analysis/
+│   ├── parse_results.py      # Parser output → CSV
+│   └── plot_results.py       # Generatore 16 grafici
+├── results/                  # CSV, grafici, vec reports
+├── report/                   # PDF report finale (3 pagine)
+└── guide/                    # Questa guida
 \end{verbatim}
 
 
 % ############################################################################
-\section{Fondamenti Teorici}
+\section{Fondamenti Teorici e Riferimenti alle Lezioni}
+\label{sec:teoria}
 % ############################################################################
+
+\subsection{Il collo di bottiglia di Von Neumann (L5\&6, slide 3--5)}
+
+\begin{theorybox}[title=\textbf{Von Neumann Bottleneck}]
+In un'architettura a memoria condivisa, il tempo di esecuzione di un kernel è limitato dal \textbf{più lento} tra:
+\begin{itemize}
+    \item $t_\text{comp}$: tempo di calcolo (operazioni aritmetiche/logiche)
+    \item $t_\text{mem}$: tempo di trasferimento dati (memoria $\leftrightarrow$ processore)
+\end{itemize}
+Se $t_\text{mem} > t_\text{comp}$, il kernel è \textbf{memory-bound}: il processore è in stallo aspettando i dati dalla memoria. In questo caso, aumentare la potenza di calcolo (es.\ SIMD più largo) \textbf{non} migliora le prestazioni.
+\end{theorybox}
+
+\textbf{Il nostro kernel è memory-bound.} Per ogni chiave:
+\begin{itemize}
+    \item \textbf{Legge} 8 byte (una chiave \texttt{uint64\_t})
+    \item \textbf{Scrive} 4 byte (un \texttt{uint32\_t} partition ID)
+    \item \textbf{Calcola} $\sim$4 operazioni intere (XOR, mul32, shift, store)
+\end{itemize}
+Il traffico di memoria totale è $12N$ byte, il compute è $\sim 4N$ operazioni.
+
+
+\subsection{Modello Roofline (L5\&6, slide 47--51)}
+
+\begin{theorybox}[title=\textbf{Modello Roofline}]
+La performance massima raggiungibile (in ops/s) è:
+$$P_\text{max} = \min\bigl(R_\text{peak},\; I \times B_\text{peak}\bigr)$$
+dove:
+\begin{itemize}
+    \item $R_\text{peak}$: prestazione computazionale di picco del processore (ops/s)
+    \item $B_\text{peak}$: bandwidth di memoria di picco (byte/s)
+    \item $I = \frac{\text{operazioni}}{\text{byte trasferiti}}$: \textbf{Operational Intensity} (ops/byte)
+\end{itemize}
+Il \textbf{ridge point} $I^* = R_\text{peak} / B_\text{peak}$ separa la regione memory-bound ($I < I^*$) dalla regione compute-bound ($I > I^*$).
+\end{theorybox}
+
+\paragraph{Calcolo per il nostro kernel.}
+\begin{align}
+I &= \frac{4 \text{ ops}}{12 \text{ byte}} = 0.333 \text{ ops/byte} \label{eq:oi}
+\end{align}
+
+\begin{resultbox}[title=\textbf{Parametri hardware misurati su node09 (micro-benchmark)}]
+\begin{itemize}
+    \item $B_\text{peak} = 16.4$ GB/s (single-core, misurato con STREAM-like AVX2 copy)
+    \item $R_\text{peak}^\text{scalar} = 5.17$ Gops/s (4 catene indipendenti XOR+MUL+SHIFT)
+    \item $R_\text{peak}^\text{AVX2} = 15.28$ Gops/s (4 catene $\times$ 8 elementi)
+\end{itemize}
+Ridge point scalare: $I^* = 5.17 / 16.4 = 0.315$ ops/byte.\\
+Ridge point AVX2: $I^* = 15.28 / 16.4 = 0.932$ ops/byte.
+
+Il nostro kernel ha $I = 0.333$, che è:
+\begin{itemize}
+    \item Appena \textbf{sopra} il ridge point scalare ($0.333 > 0.315$) → leggermente compute-bound in scalare
+    \item \textbf{Sotto} il ridge point AVX2 ($0.333 < 0.932$) → fortemente memory-bound con SIMD
+\end{itemize}
+Questo spiega perché il passaggio da scalare a AVX2 sposta il bottleneck da compute a memoria.
+\end{resultbox}
+
+Il tetto di bandwidth al nostro $I$:
+$$P_\text{bw} = I \times B_\text{peak} = 0.333 \times 16.4 = 5.47 \text{ Gops/s}$$
+
+L'autovec misurato raggiunge 5.29 Gops/s = \textbf{97\% del tetto di bandwidth}. Il kernel è essenzialmente \textit{bandwidth-saturated}.
+
+
+\subsection{Modello SIMD (L7\&8, slide 7)}
+
+\begin{theorybox}[title=\textbf{Speedup SIMD teorico}]
+$$\text{Speedup}_\text{SIMD} \approx \text{vector\_width} \times \text{efficiency}$$
+Con AVX2 su uint32: vector\_width = 8, ma l'efficienza è limitata dalla memoria.
+\end{theorybox}
+
+\paragraph{L7\&8, slide 8}: ``\textit{Not all intrinsic functions map one-to-one to a single instruction}''. Questo è cruciale per la nostra scelta di hash: una \texttt{\_mm256\_mullo\_epi64} non esiste in AVX2 (solo AVX-512). La decomposizione della mul64 richiede 3$\times$ \texttt{vpmuludq} + shift + add $\Rightarrow$ la SIMD diventa più lenta dello scalare.
+
+\paragraph{L7\&8, slide 30, 39}: SoA layout e stride unitario sono prerequisiti per la vettorizzazione efficiente. Il nostro kernel accede a \texttt{keys[i]} e \texttt{part\_ids[i]} in modo sequenziale.
+
+\paragraph{L7\&8, slide 32--34, 40}: condizioni per l'auto-vectorization di GCC.
+
+
+\subsection{Metriche di Performance (L10)}
+
+\begin{theorybox}[title=\textbf{Definizioni formali (L10, slide 5--6)}]
+\begin{itemize}
+    \item \textbf{Speedup}: $S(p) = T_\text{seq} / T_\text{par}(p)$
+    \item \textbf{Efficienza}: $E(p) = S(p) / p$
+    \item \textbf{Costo}: $C(p) = T_\text{par}(p) \times p$
+\end{itemize}
+Nel contesto SIMD, $p$ è la \textbf{larghezza del vettore}: $p=1$ (scalare), $p=8$ (AVX2 256-bit su uint32).
+\end{theorybox}
+
+\paragraph{Legge di Amdahl (L10, slide 24--28).}
+$$S(p) \leq \frac{1}{f + (1-f)/p}$$
+dove $f$ è la \textbf{frazione seriale} del programma. Per $p \to \infty$: $S_\text{max} = 1/f$.
+
+\textbf{Interpretazione per SIMD memory-bound}: la ``frazione seriale'' $f$ non è codice non-parallelizzabile, ma il \textbf{tempo di attesa dalla memoria}, che non beneficia del parallelismo SIMD. Dal nostro speedup misurato $S = 1.46\times$ con $p=8$:
+$$f = \frac{1/S - 1/p}{1 - 1/p} = \frac{1/1.46 - 1/8}{1 - 1/8} \approx 64\%$$
+Anche con $p \to \infty$: $S_\text{max} \approx 1/0.64 = 1.56\times$. Passare ad AVX-512 ($p=16$) non darebbe guadagni significativi.
+
+\paragraph{Legge di Amdahl con overhead (L10, slide 31--32).}
+La legge di Amdahl ``pura'' è ottimistica perché ignora gli overhead. Nel nostro caso SIMD:
+$$S(p) \leq \frac{1}{[f + O(p)] + (1-f)/p}$$
+dove $O(p)$ include: costo delle istruzioni di permutazione/pack, tail loop per $N \bmod 8$ chiavi.
+
+
+\subsection{CUDA e modello SIMT (L9)}
+
+\begin{theorybox}[title=\textbf{Modello SIMT (L9, slide 2--5)}]
+GPU NVIDIA eseguono migliaia di thread raggruppati in warp da 32 thread. Ogni thread esegue la stessa istruzione. Per kernel memory-bound, la chiave è la \textbf{bandwidth HBM2} e il \textbf{memory coalescing} (L9, slide 28).
+\end{theorybox}
+
+\paragraph{A30 specs (L9, slide 24)}: 993 GB/s HBM2 peak, PCIe 4.0 x16 ($\sim$25 GB/s bidirezionale).
+
+\paragraph{Il problema del trasferimento}: per un kernel che fa pochissimo compute per byte, il trasferimento PCIe Host$\leftrightarrow$Device domina il tempo end-to-end. Il kernel GPU è utile solo se i dati sono \textbf{già residenti in GPU memory}.
+
 
 \subsection{Hashing: dal problema alla scelta}
 
 \begin{theorybox}[title=\textbf{Il problema dell'hashing per il partitioning}]
-Data una chiave $k \in U = \{0, \ldots, 2^{64}-1\}$ e un numero di partizioni $P$, vogliamo una funzione $h: U \to \{0, \ldots, P-1\}$ che sia:
+Data una chiave $k \in U = \{0, \ldots, 2^{64}-1\}$ e un numero di partizioni $P$, vogliamo $h: U \to \{0, \ldots, P-1\}$ che sia:
 \begin{itemize}
     \item \textbf{Deterministica}: stessa chiave $\to$ stessa partizione
-    \item \textbf{Uniformemente distribuita}: le chiavi si distribuiscano equamente tra le $P$ partizioni
-    \item \textbf{Veloce da calcolare}: il kernel viene applicato a \emph{tutti} gli $N$ input
-    \item \textbf{SIMD-friendly}: componibile da operazioni vettorizzabili
+    \item \textbf{Uniformemente distribuita}: chiavi equamente tra le $P$ partizioni
+    \item \textbf{Veloce}: applicata a \emph{tutti} gli $N$ input (streaming kernel)
+    \item \textbf{SIMD-friendly}: operazioni vettorizzabili nativamente
 \end{itemize}
 \end{theorybox}
 
-\subsubsection{Hashing by Division ($k \bmod P$)}
-Il metodo pi\`u semplice. \textbf{Problema}: l'operazione modulo \`e costosa (divisione intera), e se $P$ \`e potenza di 2 si riduce a una maschera di bit ($k\ \&\ (P-1)$), ma questo considera solo i bit \textbf{meno significativi} della chiave, ottenendo una distribuzione pessima per chiavi con pattern nei bit bassi.
-
-\subsubsection{Universal Hashing (Ferragina, Cap. 8, \S8.3)}
-Da \textit{Pearls of Algorithm Engineering} (Ferragina, 2023):
-\begin{quote}
-\itshape
-Una classe universale $\mathcal{H}$ di funzioni hash garantisce che, per qualsiasi coppia di chiavi distinte $x, y \in U$:
-$$|\{h \in \mathcal{H} : h(x) = h(y)\}| \leq \frac{|\mathcal{H}|}{m}$$
-\end{quote}
-Questo significa che una funzione scelta a caso da $\mathcal{H}$ ha probabilit\`a $\leq 1/m$ di far collidere due chiavi fissate.
-
-\subsubsection{Multiply-Add-Shift (Ferragina, Cap. 8, \S8.3.1)}
-
-\begin{theorybox}[title=\textbf{Schema Multiply-Add-Shift (classe universale)}]
-Assumendo $|U| = 2^w$ e table size $m = 2^\ell < |U|$:
+\subsubsection{Universal Hashing e Multiply-Shift}
+Dalla classe universale Multiply-Add-Shift (Dietzfelbinger):
 $$h_{a,b}(k) = \left\lfloor \frac{(ak + b) \bmod 2^w}{2^{w-\ell}} \right\rfloor$$
-dove $a$ \`e un intero \textbf{dispari} $< |U|$ e $b \geq 0$.
+Semplificando con $b=0$ (quasi-universale, collisione $\leq 2/m$ invece di $1/m$):
+$$h_a(k) = (A \cdot k) \gg (w - \log_2 P)$$
 
-\textbf{Operativamente}: seleziona gli $\ell$ bit ``centrali'' del prodotto $(ak + b)$.
+\subsubsection{La nostra scelta: XOR-fold + Fibonacci mul32}
 
-Questa classe $\mathcal{H}_{w,\ell}$ \`e \textbf{universale} e pu\`o essere implementata \textbf{senza operazioni modulo} (solo moltiplicazioni e shift su registri di $2w$ bit).
-\end{theorybox}
+\begin{equation}
+\boxed{h(k) = \bigl((k_\text{lo} \oplus k_\text{hi}) \cdot A_{32}\bigr) \gg (32 - \log_2 P)}
+\label{eq:hash}
+\end{equation}
+dove $A_{32} = \texttt{0x9E3779B9} = \lfloor 2^{32}/\varphi \rfloor$ (costante Fibonacci, Knuth TAOCP Vol.~3, §6.4).
 
-\subsubsection{La nostra scelta: Fibonacci Hashing (Multiply-Shift)}
-
-Semplifichiamo lo schema Multiply-Add-Shift ponendo $b = 0$:
-$$h_a(k) = (A \cdot k) \gg (64 - \log_2 P)$$
-
-\paragraph{Dalla formula completa alla semplificazione.}
-La classe completa di Dietzfelbinger con entrambi i parametri $a$ (dispari) e $b \geq 0$ \`e \textbf{2-universale}: per ogni coppia di chiavi distinte $x \neq y$, la probabilit\`a di collisione \`e al pi\`u $1/m$. La variante senza $b$ (solo multiply-shift, $b=0$) \`e dimostrata essere \textbf{quasi-universale}: la probabilit\`a di collisione sale a $\leq 2/m$ anzich\'e $1/m$.
-
-Per il nostro caso --- partizionamento a scopo di join, non una hash table con chaining --- questa differenza \`e \textbf{trascurabile}: con $P = 256$, una garanzia di collisione per coppia $\leq 2/256 \approx 0.8\%$ \`e pi\`u che sufficiente.
-In cambio, eliminando l'addizione risparmiamo un'operazione aritmetica per chiave, il che conta in un kernel streaming memory-bound eseguito su centinaia di milioni di chiavi.
-
-\paragraph{La scelta della costante $A$: non basta che sia dispari.}
-
-La costante $A$ \`e scelta come il \textbf{Fibonacci number a 32 bit}:
-$$A_{32} = \lfloor 2^{32} / \varphi \rfloor = \texttt{0x9E3779B9}$$
-dove $\varphi = (1+\sqrt{5})/2$ \`e il rapporto aureo (Knuth, TAOCP Vol.\ 3, \S6.4).
-
-Poich\'e le chiavi sono a 64 bit ma la costante \`e a 32 bit, la chiave viene prima ``ripiegata'' con XOR delle due met\`a:
-$$h(k) = \bigl((k_\text{lo} \oplus k_\text{hi}) \cdot A_{32}\bigr) \gg (32 - \log_2 P)$$
-dove $k_\text{lo}$ e $k_\text{hi}$ sono i 32 bit bassi e alti della chiave. La XOR-fold preserva l'entropia di entrambe le met\`a.
-
-\begin{warnbox}[title=\textbf{Dispari \`e necessario ma non sufficiente}]
-Nella classe universale multiply-shift, $a$ \textbf{deve} essere dispari perch\'e in aritmetica modulo $2^w$ solo gli interi dispari hanno inverso moltiplicativo, e quindi la mappa $k \mapsto a \cdot k \bmod 2^w$ \`e una \textbf{biiezione} (permutazione) su $\{0, \ldots, 2^w -1\}$.
-Un $a$ pari non \`e invertibile: distrugge informazione (il bit meno significativo del prodotto \`e sempre 0).
-
-Tuttavia, \textbf{essere dispari non garantisce una buona distribuzione pratica}:
-\begin{itemize}
-    \item $a = 1$ \`e dispari, ma $h(k) = k \gg (64-\ell)$ prende solo i bit alti della chiave --- pessimo se le chiavi hanno poca entropia nei bit pi\`u significativi.
-    \item $a = 3$ \`e dispari, ma $3k = 2k + k$: pochissimo \textit{mixing} tra i bit della chiave.
-\end{itemize}
-La teoria universale garantisce buone prestazioni \textbf{in media su una scelta casuale} di $a$ dispari. Poich\'e noi fissiamo \textbf{una sola} costante, dobbiamo sceglierla con cura.
-\end{warnbox}
-
-\begin{tipbox}[title=\textbf{Perch\'e il golden ratio \`e una scelta eccellente}]
-La costante $\lfloor 2^{64}/\varphi \rfloor$ ha tre propriet\`a speciali:
-
+\textbf{Motivazioni}:
 \begin{enumerate}
-    \item \textbf{Equidistribuzione di Weyl}: la sequenza $\{k \cdot \alpha\}$ (parte frazionaria di $k$ per un irrazionale $\alpha$) \`e equidistribuita modulo 1. Il reciproco del rapporto aureo $1/\varphi$ \`e il numero ``pi\`u irrazionale'' --- la sua approssimazione con frazioni continue converge pi\`u lentamente di qualsiasi altro irrazionale. Questo garantisce la \textbf{massima uniformit\`a} nella distribuzione delle chiavi tra le partizioni.
-
-    \item \textbf{Bit-mixing}: la rappresentazione binaria di \texttt{0x9E3779B9} ha una miscela quasi bilanciata di 0 e 1 distribuiti irregolarmente. Moltiplicando per questo numero, \textbf{ogni bit del risultato dipende da molti bit dell'input}, a differenza di costanti con pattern regolari (es.\ \texttt{0xAAAA...}).
-
-    \item \textbf{Dispari per costruzione}: $\lfloor 2^{64}/\varphi \rfloor$ \`e dispari, soddisfacendo automaticamente il requisito formale della classe universale.
-\end{enumerate}
-\end{tipbox}
-
-\textbf{Motivazioni per la scelta rispetto al progetto:}
-\begin{enumerate}
-    \item \textbf{Velocit\`a}: XOR + una moltiplicazione 32-bit + uno shift (nessuna divisione)
-    \item \textbf{SIMD-native}: la moltiplicazione a 32 bit mappa direttamente su \texttt{\_mm256\_mullo\_epi32} (istruzione \texttt{vpmulld}), \textbf{nativa} in AVX2 --- 8 moltiplicazioni in una sola istruzione. A differenza di una hash a 64 bit, non servono 3$\times$ \texttt{vpmuludq} per emulare il prodotto
-    \item \textbf{XOR-fold}: combina i 32 bit alti e bassi della chiave preservando entropia da entrambe le met\`a
-    \item \textbf{Distribuzione quasi-universale}: garanzia teorica $\leq 2/P$ di collisioni per coppia, sufficiente per il partizionamento
-    \item \textbf{Qualit\`a pratica della costante}: il golden ratio fornisce la migliore equidistribuzione possibile (Weyl + Knuth)
-    \item \textbf{Nessuna tabella ausiliaria}: zero footprint di memoria aggiuntiva
-    \item \textbf{$P$ potenza di 2}: lo shift \`e un parametro intero, nessun modulo
-    \item \textbf{Verificata empiricamente}: su $10^8$ chiavi con $P=256$, il rapporto tra il bucket pi\`u pieno e il valore atteso \`e $\approx 1.005$
+    \item \textbf{SIMD-native}: \texttt{\_mm256\_mullo\_epi32} (\texttt{vpmulld}) è nativa AVX2 --- 8 mul/istruzione
+    \item \textbf{Entropy preservation}: $k_\text{lo} \oplus k_\text{hi}$ combina entrambe le metà della chiave
+    \item \textbf{Golden ratio}: la costante $\lfloor 2^{32}/\varphi \rfloor$ ha proprietà speciali di equidistribuzione (Weyl) e bit-mixing ottimale
+    \item \textbf{Minimal compute}: solo XOR + mul32 + shift (no divisione, no modulo, no branch)
+    \item \textbf{$P$ potenza di 2}: lo shift sostituisce il modulo
 \end{enumerate}
 
-\begin{warnbox}[title=\textbf{Perch\'e non una hash a 64 bit?}]
-La scelta iniziale naturale sarebbe $h(k) = (A_{64} \cdot k) \gg (64 - \log_2 P)$ con $A_{64} = \texttt{0x9E3779B97F4A7C15}$. Questa funziona perfettamente in scalare (un'istruzione \texttt{imul r64,r64}), ma \textbf{AVX2 non ha un'istruzione nativa per la moltiplicazione 64$\times$64 bit} (\texttt{\_mm256\_mullo\_epi64} \`e disponibile solo da AVX-512).
+\begin{warnbox}[title=\textbf{Perché non una hash a 64 bit?}]
+La scelta naturale sarebbe $h(k) = (A_{64} \cdot k) \gg (64 - \log_2 P)$ con un'istruzione scalare \texttt{imul r64,r64}. Ma \textbf{AVX2 non ha \texttt{mullo\_epi64}} (disponibile solo da AVX-512). La decomposizione richiede 3$\times$ \texttt{vpmuludq} + 2 shift + 2 add per 4 chiavi.
 
-La decomposizione della mul64 richiede 3$\times$ \texttt{vpmuludq} + 2 shift + 2 add, cio\`e circa 8 micro-operazioni per 4 chiavi (2 ops/chiave), contro 1 \texttt{imul} scalare per chiave. Come osservato nella slide 8 della lezione 7\&8: \emph{``not all intrinsic functions map one-to-one to a single instruction''}. In un kernel memory-bound questo overhead computazionale annulla il vantaggio del parallelismo SIMD.
+Come nota la slide 8 di L7\&8: ``\textit{not all intrinsic functions map one-to-one to a single instruction}''.
 
-La hash XOR-fold a 32 bit risolve il problema: \texttt{vpmulld} (mullo\_epi32) \`e nativa e processa 8 chiavi per istruzione, ottenendo uno speedup AVX2 reale di $\sim$1.3$\times$.
+\textbf{Risultato misurato su node09}: con hash mul64, AVX2 è \textbf{più lento} dello scalare ($\sim$880 vs $\sim$910 Mkeys/s). Con XOR-fold + mul32, AVX2 raggiunge $\sim$1200 Mkeys/s (1.31$\times$ speedup).
 \end{warnbox}
 
 
-\subsection{SIMD e Vettorizzazione (Lezioni 7\&8)}
+% ############################################################################
+\section{Implementazione Dettagliata}
+% ############################################################################
 
-\begin{theorybox}[title=\textbf{Modello SIMD}]
-\textbf{Single Instruction, Multiple Data}: la stessa istruzione \`e applicata simultaneamente a pi\`u dati in parallelo tramite unit\`a vettoriali. Con AVX2:
-\begin{itemize}
-    \item Registri a \textbf{256 bit} $\Rightarrow$ 4 interi a 64 bit, oppure 8 a 32 bit
-    \item Speedup teorico: $\text{vector\_width} \times \text{efficiency}$
-    \item Nella pratica: 2--6$\times$ per operazioni memory-bound
-\end{itemize}
-\end{theorybox}
+\subsection{common.hpp --- Infrastruttura condivisa}
 
-\subsubsection{Auto-vettorizzazione del compilatore}
-Il compilatore (GCC) tenta di trasformare loop scalari in istruzioni SIMD. Condizioni necessarie (dalla lezione):
-\begin{itemize}
-    \item Loop count noto all'ingresso
-    \item Nessuna dipendenza tra iterazioni (no RAW/WAR/WAW)
-    \item Nessun branch data-dependent nell'inner loop
-    \item Nessuna function call non-inlinabile
-    \item Accessi a memoria con stride unitario
-    \item Assenza di aliasing (\texttt{\_\_restrict\_\_})
-\end{itemize}
+Il file \texttt{include/common.hpp} contiene tutti i componenti riusati:
 
-\textbf{Flag GCC per auto-vectorization:}
-\begin{lstlisting}[language=bash]
-# Abilitata (default con -O3):
-g++ -O3 -march=native -ftree-vectorize
+\paragraph{Tipi.}
+\begin{lstlisting}
+using spm_key_t = uint64_t;  // chiave 64-bit
+using part_t    = uint32_t;  // partition ID
+\end{lstlisting}
+\textbf{Nota}: usiamo \texttt{spm\_key\_t} invece di \texttt{key\_t} per evitare il conflitto con la \texttt{key\_t} POSIX definita in \texttt{sys/types.h}.
 
-# Disabilitata (baseline):
-g++ -O3 -march=native -fno-tree-vectorize
+\paragraph{Funzione hash.}
+\begin{lstlisting}
+static constexpr uint32_t HASH_A32 = 0x9E3779B9u;
 
-# Report:
--fopt-info-vec-optimized=report_ok.txt
--fopt-info-vec-missed=report_missed.txt
+inline part_t hash_key(spm_key_t key, unsigned shift32) {
+    uint32_t k_lo = static_cast<uint32_t>(key);
+    uint32_t k_hi = static_cast<uint32_t>(key >> 32);
+    return (uint32_t)(((k_lo ^ k_hi) * HASH_A32) >> shift32);
+}
 \end{lstlisting}
 
-\subsubsection{Intrinsics AVX2 (Lezione 7\&8)}
+\paragraph{Generatore chiavi deterministico.} Usa xoshiro256** (Blackman--Vigna), inizializzato con SplitMix64 dal seed. Il parametro \texttt{key\_space} permette di controllare i duplicati ($\texttt{key} \bmod \texttt{key\_space}$).
 
-\textbf{Problema}: AVX2 \textbf{non ha} una moltiplicazione nativa 64-bit $\times$ 64-bit. \texttt{\_mm256\_mul\_epu32} moltiplica i 32 bit bassi di ogni lane a 64 bit, producendo un risultato a 64 bit.
+\paragraph{Checksum FNV-1a.} Per la verifica di correttezza senza stampare $N$ valori:
+\begin{lstlisting}
+inline uint64_t compute_checksum(const part_t* part_ids, size_t N) {
+    uint64_t h = 0xCBF29CE484222325ULL;
+    for (size_t i = 0; i < N; i++) {
+        h ^= static_cast<uint64_t>(part_ids[i]);
+        h *= 0x100000001B3ULL;  // FNV prime
+    }
+    return h;
+}
+\end{lstlisting}
 
-\textbf{Strategia di decomposizione} per calcolare $(A \cdot k) \bmod 2^{64}$:
-\begin{align}
-A \cdot k &= A_{\text{lo}} \cdot k_{\text{lo}} \quad\quad\text{(64-bit da \texttt{mul\_epu32})} \notag \\
-          &+ (A_{\text{lo}} \cdot k_{\text{hi}}) \ll 32 \notag \\
-          &+ (A_{\text{hi}} \cdot k_{\text{lo}}) \ll 32 \notag \\
-          &+ \underbrace{(A_{\text{hi}} \cdot k_{\text{hi}}) \ll 64}_{\text{overflow, ignorato}} \notag
-\end{align}
-Dove $A_{\text{lo}} = A \bmod 2^{32}$, $A_{\text{hi}} = A \gg 32$, e analogamente per $k$.
+\paragraph{Allocazione allineata.} Usa \texttt{posix\_memalign} (non \texttt{std::aligned\_alloc} che non è disponibile su macOS Apple libc++). L'allineamento a 32 byte è richiesto da \texttt{\_mm256\_load\_si256}.
 
-Questo richiede \textbf{3 moltiplicazioni a 32 bit + 2 addizioni + 2 shift} per ogni gruppo di 4 chiavi.
+\paragraph{Dataset binari e mmap.} I dataset sono file binari con header 40 byte (magic, N, seed, key\_space) + $N \times 8$ byte di chiavi. Caricati via \texttt{mmap()} per zero-copy.
 
-
-\subsection{Metriche di Performance (Lezione 10)}
-
-\begin{theorybox}[title=\textbf{Metriche da riportare}]
-\begin{itemize}
-    \item \textbf{Execution time} $T$ (ms): mediana su $r$ ripetizioni
-    \item \textbf{Throughput} $= N / T$ (Mkeys/s): chiavi processate per secondo
-    \item \textbf{Speedup} $S = T_{\text{baseline}} / T_{\text{ottimizzato}}$
-    \item \textbf{Deviazione standard} $\sigma$ su $r$ ripetizioni
-\end{itemize}
-\end{theorybox}
-
-\textbf{Roofline analysis} (Lezione 5\&6): il kernel \`e probabilmente \textbf{memory-bound}:
-\begin{itemize}
-    \item Input: $N \times 8$ byte (chiavi 64-bit)
-    \item Output: $N \times 4$ byte (partition id 32-bit)
-    \item Compute: $\sim$3--5 operazioni per chiave (mul + shift + store)
-    \item Operational Intensity $\approx 5 / 12 \approx 0.4$ FLOP/byte $\Rightarrow$ fortemente memory-bound
-\end{itemize}
-Questo implica che il bottleneck sar\`a la \textbf{bandwidth di memoria}, non il compute.
+\paragraph{Benchmark utilities.} Mediana di $r$ ripetizioni, deviazione standard, throughput in Mkeys/s.
 
 
-% ############################################################################
-\section{Workflow di Implementazione}
-% ############################################################################
+\subsection{plain.cpp --- Kernel scalare (Task 1)}
 
-\subsection{Fase 1: Setup e Infrastruttura}
-
-\begin{enumerate}
-    \item \textbf{Accesso al cluster}: connessione SSH a \texttt{spmcluster.unipi.it} (VPN se off-campus)
-    \item \textbf{Trasferimento codice}:
-    \begin{lstlisting}[language=bash]
-rsync -av module_1/ username@spmcluster.unipi.it:~/spm/module_1/
-    \end{lstlisting}
-    \item \textbf{Compilazione} su node09:
-    \begin{lstlisting}[language=bash]
-srun --partition=gpu-exclusive --nodelist=node09 --ntasks=1 bash
-cd ~/spm/module_1
-make all
-    \end{lstlisting}
-    \item \textbf{Test correttezza} (piccolo $N$):
-    \begin{lstlisting}[language=bash]
-make test_correctness
-    \end{lstlisting}
-\end{enumerate}
-
-\begin{warnbox}
-\textbf{rsync}: non copiare mai direttamente nella home (\texttt{\textasciitilde/}) con \texttt{-a}, rischi di alterare i permessi. Usa sempre una sottodirectory (es.\ \texttt{\textasciitilde/spm/}).
-\end{warnbox}
-
-
-\subsection{Fase 2: Implementazione Plain C++ (Task 1)}
-
-\subsubsection{Step 2.1: Scrivere il kernel}
-Il file \texttt{src/plain.cpp} contiene il kernel:
+\paragraph{Il kernel.}
 \begin{lstlisting}
 void partition_map(const spm_key_t* __restrict__ keys,
                    part_t*          __restrict__ part_ids,
@@ -332,101 +340,92 @@ void partition_map(const spm_key_t* __restrict__ keys,
 }
 \end{lstlisting}
 
-La hash XOR-fold a 32 bit usa solo operazioni native in AVX2, favorendo l'auto-vettorizzazione con \texttt{vpmulld} (8 mul32 per istruzione).
-
-\textbf{Accorgimenti per favorire l'auto-vectorization}:
+\textbf{Condizioni per auto-vectorization} (L7\&8, slide 32--34):
 \begin{itemize}
-    \item \texttt{\_\_restrict\_\_}: elimina il rischio di aliasing percepito dal compilatore
-    \item Loop semplice con stride unitario e conteggio noto
-    \item Nessuna function call nel body (tutto inline)
-    \item Nessuna dipendenza tra iterazioni
-    \item Memoria allineata a 32 byte (per load/store efficienti)
+    \item[\checkmark] Trip count noto ($N$ fisso all'ingresso del loop)
+    \item[\checkmark] Nessuna dipendenza tra iterazioni (ogni \texttt{part\_ids[i]} dipende solo da \texttt{keys[i]})
+    \item[\checkmark] Nessuna function call nel body (tutto inline)
+    \item[\checkmark] \texttt{\_\_restrict\_\_} per escludere aliasing tra \texttt{keys} e \texttt{part\_ids}
+    \item[\checkmark] Stride unitario per entrambi gli array
+    \item[\checkmark] Operazione SIMD-native (\texttt{vpmulld} per mul32)
 \end{itemize}
 
-\subsubsection{Step 2.2: Compilare i due binari}
+\paragraph{Due binari dallo stesso sorgente.}
 \begin{lstlisting}[language=bash]
-# Baseline (no auto-vec)
+# Baseline (auto-vectorization disabilitata):
 g++ -std=c++20 -O3 -march=native -mavx2 -fno-tree-vectorize \
     src/plain.cpp -I include -o bin/plain_baseline
 
-# Autovec (con report)
+# Autovec (auto-vectorization abilitata con report):
 g++ -std=c++20 -O3 -march=native -mavx2 -ftree-vectorize \
-    -fopt-info-vec-optimized=results/vec_optimized.txt \
-    -fopt-info-vec-missed=results/vec_missed.txt \
+    -DAUTOVEC_ENABLED \
+    -fopt-info-vec-optimized=results/vec_report_optimized.txt \
+    -fopt-info-vec-missed=results/vec_report_missed.txt \
     src/plain.cpp -I include -o bin/plain_autovec
 \end{lstlisting}
 
-\subsubsection{Step 2.3: Verificare la vettorizzazione}
-\begin{lstlisting}[language=bash]
-cat results/vec_optimized.txt
-# Con la hash a 32 bit, il report mostrera':
-# src/plain.cpp:33:26: optimized: loop vectorized using 32 byte vectors
-# src/plain.cpp:33:26: optimized: loop vectorized using 16 byte vectors
+\paragraph{Evidenza auto-vectorization (GCC 12.2 su node09).}
+\begin{lstlisting}
+src/plain.cpp:33:26: optimized: loop vectorized using 32 byte vectors
+src/plain.cpp:33:26: optimized: loop vectorized using 16 byte vectors
 \end{lstlisting}
 
-Nota: GCC emette sia la versione a 256 bit (ymm) sia a 128 bit (xmm); a runtime sceglie quella pi\`u efficiente in base all'architettura. Su Zen 1, le operazioni a 256 bit vengono decomposte internamente in 2$\times$128 bit --- ma \texttt{vpmulld} rimane comunque un'istruzione \textbf{nativa}, molto pi\`u efficiente della decomposizione mul64 con 3$\times$ \texttt{vpmuludq}.
+GCC emette sia la versione a 256 bit (ymm) che a 128 bit (xmm). Su \textbf{Zen~1}, le operazioni AVX2 a 256 bit vengono decomposte in 2$\times$128 bit dalla microarchitettura (le ALU interne sono a 128 bit), ma \texttt{vpmulld} rimane un'istruzione nativa.
 
-\begin{warnbox}
-Se il report dice ``\texttt{not vectorized: ...}'', analizza il motivo:
+\paragraph{Il main.} Gestisce:
 \begin{itemize}
-    \item ``\texttt{possible aliasing}'': aggiungi \texttt{\_\_restrict\_\_}
-    \item ``\texttt{loop carried dependence}'': verifica che non ci siano dipendenze
-\end{itemize}
-\end{warnbox}
-
-
-\subsection{Fase 3: Implementazione AVX2 (Task 2)}
-
-\subsubsection{Step 3.1: L'hash AVX2 con mul32 nativa}
-Grazie alla scelta della hash XOR-fold a 32 bit, l'implementazione AVX2 usa direttamente \texttt{\_mm256\_mullo\_epi32} --- un'istruzione nativa che esegue 8 moltiplicazioni 32$\times$32 in parallelo. Non serve alcuna decomposizione.
-
-\subsubsection{Step 3.2: Il loop principale}
-Il loop processa \textbf{8 chiavi per iterazione} (2 registri ymm in input $\to$ 1 registro ymm in output):
-\begin{lstlisting}
-for (size_t i = 0; i < simd_end; i += 8) {
-    // carica 8 chiavi uint64 in 2 registri ymm (4+4)
-    __m256i vk0 = _mm256_load_si256(&keys[i]);
-    __m256i vk1 = _mm256_load_si256(&keys[i+4]);
-    // XOR fold: k_lo ^ k_hi per ogni chiave
-    __m256i hi0 = _mm256_srli_epi64(vk0, 32);
-    __m256i hi1 = _mm256_srli_epi64(vk1, 32);
-    __m256i x0  = _mm256_xor_si256(vk0, hi0);
-    __m256i x1  = _mm256_xor_si256(vk1, hi1);
-    // pack: estrai i 32 bit bassi di ogni lane 64-bit
-    __m256i p0    = _mm256_permutevar8x32_epi32(x0, shuf);
-    __m256i p1    = _mm256_permutevar8x32_epi32(x1, shuf);
-    __m256i mixed = _mm256_permute2x128_si256(p0, p1, 0x20);
-    // Fibonacci mul32 nativa: 8 mul in 1 istruzione (vpmulld)
-    __m256i prod = _mm256_mullo_epi32(mixed, va32);
-    __m256i h    = _mm256_srli_epi32(prod, shift);
-    // scrivi 8 partition id
-    _mm256_storeu_si256(&part_ids[i], h);
-}
-// Tail: loop scalare per i rimanenti N%8 elementi
-\end{lstlisting}
-
-\subsubsection{Step 3.3: Confronto con approccio mul64}
-Un approccio alternativo sarebbe usare una hash a 64 bit $(A_{64} \cdot k) \gg (64 - \log_2 P)$. Tuttavia AVX2 \textbf{non ha} \texttt{\_mm256\_mullo\_epi64}: servirebbero 3$\times$ \texttt{vpmuludq} + shift + add per emulare ogni mul64. Benchmark su node09:
-\begin{itemize}
-    \item Scalare (imul64): \(\sim\)910 Mkeys/s
-    \item AVX2 con mul64 decomp.: \(\sim\)880 Mkeys/s (\textbf{pi\`u lento} dello scalare!)
-    \item AVX2 con XOR-fold + mul32: \(\sim\)1200 Mkeys/s (\textbf{1.3$\times$} speedup)
+    \item Parsing parametri: N, P, seed, key\_space, reps
+    \item Validazione $P$ potenza di 2: \texttt{P \& (P-1) == 0}
+    \item Generazione chiavi, warmup (1 esecuzione per popolare cache/TLB)
+    \item Loop benchmark con \texttt{std::chrono::high\_resolution\_clock}
+    \item Stampa: mediana, stddev, throughput, checksum
+    \item Element-wise per $N \leq 32$
+    \item Distribuzione tra partizioni per $P \leq 1024$
 \end{itemize}
 
-\begin{tipbox}
-\textbf{Verifica}: dopo ogni modifica all'implementazione AVX2, esegui il test di correttezza per controllare che il checksum corrisponda al riferimento scalare.
-\end{tipbox}
+
+\subsection{avx2.cpp --- Intrinsics AVX2 (Task 2)}
+
+\paragraph{Strategia: 8 chiavi per iterazione.}
+Poiché le chiavi sono a 64 bit ma la hash opera a 32 bit, il flusso è:
+\begin{enumerate}
+    \item \textbf{Carica} 8 chiavi uint64 in 2 registri ymm ($4 \times 64 = 256$ bit ciascuno)
+    \item \textbf{XOR-fold}: estrai k\_hi con \texttt{\_mm256\_srli\_epi64(vk, 32)}, XOR con k\_lo
+    \item \textbf{Pack}: estrai i 32 bit bassi da ogni lane 64-bit, combina in un singolo ymm di $8 \times 32$ bit
+    \item \textbf{Multiply}: \texttt{\_mm256\_mullo\_epi32} (una sola istruzione \texttt{vpmulld})
+    \item \textbf{Shift}: \texttt{\_mm256\_srli\_epi32} per ottenere il partition ID
+    \item \textbf{Store}: \texttt{\_mm256\_storeu\_si256} (8 uint32 = 256 bit)
+\end{enumerate}
+
+\paragraph{Istruzioni critiche per iterazione:}
+\begin{itemize}
+    \item 2 $\times$ \texttt{vmovdqa} (load 256-bit aligned)
+    \item 2 $\times$ \texttt{vpsrlq} (shift-right 64-bit per estrarre k\_hi)
+    \item 2 $\times$ \texttt{vpxor} (XOR fold)
+    \item 2 $\times$ \texttt{vpermd} (permute per estrarre 32 bit bassi)
+    \item 1 $\times$ \texttt{vperm2i128} (combina le due metà)
+    \item 1 $\times$ \texttt{vpmulld} (Fibonacci mul32 --- 8 moltiplicazioni)
+    \item 1 $\times$ \texttt{vpsrld} (shift per partition ID)
+    \item 1 $\times$ \texttt{vmovdqu} (store 256-bit unaligned)
+\end{itemize}
+Totale: $\sim$12 istruzioni SIMD per 8 chiavi = \textbf{1.5 istruzioni/chiave}.\\
+Scalare: $\sim$3 istruzioni per chiave (XOR + IMUL + SHR).\\
+Rapporto istruzioni: $3/1.5 = 2\times$, ma il kernel è memory-bound (Sezione~\ref{sec:risultati}).
+
+\paragraph{Tail loop.} Per gli ultimi $N \bmod 8$ elementi, usa la funzione \texttt{hash\_key()} scalare.
+
+\paragraph{Verifica integrata.} Il binario \texttt{avx2} esegue internamente \textbf{sia} il kernel scalare (con \texttt{\#pragma GCC optimize("no-tree-vectorize")}) che quello AVX2, confronta i checksum FNV-1a, e riporta PASS/FAIL. In caso di mismatch, indica la prima posizione discordante.
 
 
-\subsection{Fase 4: CUDA (Task 3 --- Opzionale)}
+\subsection{cuda\_kernel.cu --- CUDA (Task 3, opzionale)}
 
-\subsubsection{Step 4.1: Kernel CUDA}
+\paragraph{Kernel CUDA.}
 \begin{lstlisting}
-__global__ void partition_map_cuda(const uint64_t* keys,
-                                   uint32_t* part_ids,
-                                   size_t N, uint32_t hash_a32,
-                                   unsigned shift) {
-    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+__global__
+void partition_map_cuda(const uint64_t* __restrict__ keys,
+                        uint32_t*       __restrict__ part_ids,
+                        size_t N, uint32_t hash_a32, unsigned shift) {
+    size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < N) {
         uint32_t k_lo = (uint32_t)(keys[idx]);
         uint32_t k_hi = (uint32_t)(keys[idx] >> 32);
@@ -435,263 +434,254 @@ __global__ void partition_map_cuda(const uint64_t* keys,
 }
 \end{lstlisting}
 
-\subsubsection{Step 4.2: Timing separati}
-Il progetto richiede esplicitamente di riportare \textbf{separatamente}:
-\begin{itemize}
-    \item \textbf{H$\to$D transfer}: \texttt{cudaMemcpy(HostToDevice)} delle chiavi
-    \item \textbf{Kernel execution}: solo il tempo del kernel GPU
-    \item \textbf{D$\to$H transfer}: \texttt{cudaMemcpy(DeviceToHost)} dei risultati
-\end{itemize}
-Usare \textbf{CUDA Events} per misurazioni accurate.
+Ogni thread mappa \textbf{una} chiave. Con 256 threads/block e accesso sequenziale a \texttt{keys[idx]}, i warp accedono a indirizzi consecutivi $\Rightarrow$ \textbf{memory coalescing ottimale} (L9, slide 28).
 
-\begin{tipbox}
-Usa \textbf{pinned memory} (\texttt{cudaMallocHost}) per l'host buffer: migliora il throughput dei trasferimenti PCIe significativamente.
-\end{tipbox}
+\paragraph{Timing separati.} La traccia richiede esplicitamente di riportare separatamente H$\to$D, kernel, D$\to$H. Usiamo \texttt{cudaEvent\_t} per misurazioni accurate:
+\begin{lstlisting}
+cudaEventRecord(e0);  // start
+cudaMemcpy(d_keys, h_keys, ...HostToDevice);
+cudaEventRecord(e1);  // dopo H->D
+partition_map_cuda<<<nblocks, tpb>>>(...);
+cudaEventRecord(e2);  // dopo kernel
+cudaMemcpy(h_part, d_part, ...DeviceToHost);
+cudaEventRecord(e3);  // dopo D->H
+\end{lstlisting}
 
-\subsubsection{Step 4.3: Compilazione}
+\paragraph{Pinned memory.} \texttt{cudaMallocHost} per i buffer host: abilita DMA asincrono e aumenta il throughput PCIe.
+
+\paragraph{Compilazione.}
 \begin{lstlisting}[language=bash]
-# node09 ha una NVIDIA A30 (compute capability 8.0)
+# Sul nodo 9 (A30, compute capability 8.0):
 nvcc -std=c++17 -O3 -I include \
      -gencode arch=compute_80,code=sm_80 \
      src/cuda_kernel.cu -o bin/cuda_kernel
 \end{lstlisting}
 
+\paragraph{Correttezza.} Il binario esegue la stessa hash su CPU come riferimento, confronta i checksum FNV-1a, e riporta PASS/FAIL con indicazione del primo mismatch.
+
 
 % ############################################################################
-\section{Testing e Validazione}
+\section{Ambiente di Esecuzione: Cluster spmcluster, node09}
+\label{sec:cluster}
 % ############################################################################
 
-\subsection{Strategia di Correttezza}
-
-\subsubsection{Livello 1: Checksum (per N grandi)}
-Ogni implementazione calcola un hash FNV-1a dell'array di output:
-\begin{lstlisting}
-uint64_t h = 0xCBF29CE484222325ULL; // offset basis
-for (size_t i = 0; i < N; i++) {
-    h ^= part_ids[i];
-    h *= 0x100000001B3ULL;   // FNV prime
-}
-\end{lstlisting}
-Se i checksum di due implementazioni coincidono $\Rightarrow$ gli output sono identici (con probabilit\`a $> 1 - 2^{-64}$).
-
-\subsubsection{Livello 2: Confronto element-wise (per N piccolo)}
-Per $N \leq 32$, tutti i binari stampano l'output completo. Verifica manualmente o con \texttt{diff}:
-\begin{lstlisting}[language=bash]
-bin/plain_baseline 16 4 42 > /tmp/ref.txt
-bin/avx2 16 4 42 > /tmp/avx.txt
-diff /tmp/ref.txt /tmp/avx.txt
-\end{lstlisting}
-
-\subsubsection{Livello 3: Verifica integrata nell'AVX2}
-Il binario \texttt{bin/avx2} esegue \textbf{internamente} sia il kernel scalare che quello AVX2, confronta i checksum, e riporta PASS/FAIL. In caso di FAIL, indica la prima posizione discordante.
-
-\subsection{Strategia di Benchmark}
-
-\begin{warnbox}
-\textbf{Metodologia richiesta dal progetto}: multiple ripetizioni, reporting di mediana e deviazione standard.
-\end{warnbox}
-
-\begin{enumerate}
-    \item \textbf{Ripetizioni}: 11 (dispari $\to$ mediana senza ambiguit\`a)
-    \item \textbf{Warmup}: 1 esecuzione prima delle misurazioni (popola cache, TLB)
-    \item \textbf{Metrica}: \texttt{std::chrono::high\_resolution\_clock}
-    \item \textbf{Report}: mediana e $\sigma$ dei tempi
-    \item \textbf{Throughput}: $N / T_{\text{median}}$ in Mkeys/s
-\end{enumerate}
-
-\subsection{Esperimenti suggeriti}
-
-\begin{table}[h!]
+\subsection{Hardware di node09}
+\begin{table}[h]
 \centering
-\caption{Piano sperimentale}
-\begin{tabular}{@{}llll@{}}
+\begin{tabular}{@{}ll@{}}
 \toprule
-\textbf{Esperimento} & \textbf{Variabile} & \textbf{Fisso} & \textbf{Obiettivo} \\
+\textbf{Componente} & \textbf{Specifica} \\
 \midrule
-Sweep $N$   & $N \in \{1\text{M}, 10\text{M}, 50\text{M}, 100\text{M}, 200\text{M}\}$ & $P=256$ & Stabilit\`a del throughput; effetti cache \\
-Sweep $P$   & $P \in \{2, 4, 8, \ldots, 1024\}$ & $N=100\text{M}$ & Impatto di $P$ su performance e distribuzione \\
-Sweep \texttt{key\_space} & $\{10^3, 10^5, 10^7, 10^9, 0\}$ & $N=100\text{M}$, $P=256$ & Sensibilit\`a alla distribuzione input \\
+CPU & AMD EPYC 7301 (Zen 1 / Naples) \\
+Sockets $\times$ Cores $\times$ Threads & 2 $\times$ 16 $\times$ 2 = 64 CPU \\
+Boost clock & 2.7 GHz \\
+ISA & x86\_64, AVX2, FMA (ALU 128-bit, AVX2 decomposto 2$\times$128) \\
+RAM & 257 GB DDR4-2666, 8 nodi NUMA \\
+Cache & L1d: 1 MiB, L2: 16 MiB, L3: 128 MiB \\
+GPU & NVIDIA A30 (compute capability 8.0) \\
+GPU memory & HBM2, 993 GB/s peak \\
+Interconnect & PCIe 4.0 x16 ($\sim$25 GB/s bidirezionale) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
+\begin{warnbox}[title=\textbf{Zen 1 e AVX2}]
+L'EPYC 7301 (Zen 1) ha ALU interne a 128 bit. Le operazioni AVX2 a 256 bit vengono \textbf{decomposte in 2 micro-ops a 128 bit}. Questo significa che \texttt{vpmulld ymm} (8 $\times$ mul32) richiede 2 cicli (2 $\times$ 4 mul32), non 1. Tuttavia rimane \textbf{molto più efficiente} della decomposizione mul64 (che richiederebbe 3 $\times$ vpmuludq = 6 micro-ops per 4 chiavi).
 
-\subsection{Analisi della Distribuzione}
-Per verificare che la funzione hash distribuisca uniformemente:
-\begin{lstlisting}[language=bash]
-# Il programma stampa automaticamente min/max/expected per P<=1024
-bin/avx2 100000000 256
-# Output:
-#   Distribution: min=389500 max=391200 expected=390625.0
-#                 ratio_max/exp=1.0015
-\end{lstlisting}
-Un \texttt{ratio\_max/exp} vicino a 1.0 indica distribuzione uniforme.
-
-
-% ############################################################################
-\section{Cluster: spmcluster (node09)}
-% ############################################################################
-
-\subsection{Architettura di node09}
+Altre micro-architetture rilevanti:
 \begin{itemize}
-    \item \textbf{CPU}: AMD-based (Zen), supporto AVX2
-    \item \textbf{GPU}: NVIDIA A30 (compute capability 8.0)
-    \item \textbf{Partizioni SLURM}: \texttt{gpu-shared}, \texttt{gpu-exclusive}
-    \item \textbf{Time limit}: 30 minuti per job
+    \item \texttt{imul r64,r64}: latency 3 cicli, throughput 1/ciclo (Zen 1)
+    \item \texttt{vpmulld} (128-bit): latency 4 cicli, throughput 1/ciclo
 \end{itemize}
-
-\subsection{Comandi SLURM essenziali}
-\begin{lstlisting}[language=bash]
-# Informazioni sulle partizioni
-sinfo
-
-# Sessione interattiva su node09
-salloc --partition=gpu-exclusive --nodelist=node09 \
-       --ntasks=1 --cpus-per-task=4 --time=00:15:00
-
-# Sottomissione batch
-sbatch scripts/run_bench.sh
-
-# Stato dei job
-squeue --me
-
-# Cancellare un job
-scancel <jobid>
-\end{lstlisting}
-
-\begin{warnbox}
-\textbf{Non eseguire benchmark sul frontend!} Il frontend \`e condiviso e i risultati non sarebbero affidabili. Usa sempre SLURM per allocare node09.
 \end{warnbox}
 
-\subsection{Workflow di deployment}
-\begin{lstlisting}[language=bash]
-# 1. Sul tuo Mac, trasferisci il codice
-rsync -av module_1/ user@spmcluster.unipi.it:~/spm/module_1/
-
-# 2. SSH al cluster
-ssh user@spmcluster.unipi.it
-
-# 3. Compila (puo' essere fatto sul frontend per i target CPU)
-cd ~/spm/module_1
-make all
-
-# 4. Sottometti il benchmark
-sbatch scripts/run_bench.sh
-
-# 5. Monitora
-squeue --me
-# Quando completato:
-cat results/bench_*.out
-
-# 6. Trasferisci i risultati indietro
-# (dal Mac)
-rsync -av user@spmcluster.unipi.it:~/spm/module_1/results/ \
-     module_1/results/
-\end{lstlisting}
-
-
-% ############################################################################
-\section{Analisi delle Performance e Bottleneck}
-% ############################################################################
-
-\subsection{Modello Roofline (Lezione 5\&6)}
-
-Il kernel \`e un \textbf{streaming kernel}: legge $N \times 8$ byte (chiavi), scrive $N \times 4$ byte (partizioni) $= 12N$ byte di traffico memoria. Il compute \`e $\sim$5 operazioni intere per chiave.
-
-\textbf{Operational Intensity} (OI):
-$$\text{OI} = \frac{\text{operazioni}}{\text{byte trasferiti}} = \frac{5N}{12N} \approx 0.42\ \text{op/byte}$$
-
-Con bandwidth memoria di $\sim$50 GB/s (tipica per un nodo), il tetto di memoria implica:
-$$\text{Performance}_{\text{max}} \approx 50 \times 10^9 / 12 \approx 4.2\ \text{Gkeys/s}$$
-
-\begin{tipbox}
-Nel report, confronta il throughput misurato con questo upper bound teorico. Se il throughput \`e vicino al limite di bandwidth, il kernel \`e \textbf{memory-bound} e ulteriori ottimizzazioni compute non aiuteranno significativamente.
-\end{tipbox}
-
-\subsection{Cosa limita le performance?}
-\begin{enumerate}
-    \item \textbf{Memory bandwidth}: fattore dominante per questo kernel. L'AVX2 non pu\`o superare la banda di memoria.
-    \item \textbf{Compute}: la decomposizione della moltiplicazione 64-bit richiede 3 \texttt{mul\_epu32} + addizioni + shift. Pi\`u costoso di un semplice add, ma comunque dominato dalla memoria per $N$ grandi.
-    \item \textbf{Overhead SIMD}: packing dei risultati 64-bit $\to$ 32-bit, tail loop per $N \% 4$.
-    \item \textbf{Per CUDA}: il trasferimento PCIe Host$\leftrightarrow$Device domina per questo kernel semplice. Il kernel in s\'e \`e molto veloce.
-\end{enumerate}
-
-\subsection{Cosa aspettarsi come speedup}
+\subsection{SLURM}
 \begin{itemize}
-    \item \textbf{Autovec vs Baseline}: 1.5--3$\times$ (dipende da quanto GCC riesce a vettorizzare la moltiplicazione 64-bit)
-    \item \textbf{AVX2 vs Baseline}: 2--4$\times$ (limitato dalla memoria, non dal compute)
-    \item \textbf{CUDA kernel-only vs CPU}: ordini di grandezza pi\`u veloce
-    \item \textbf{CUDA end-to-end vs CPU}: potrebbe essere \textbf{pi\`u lento} per N piccoli a causa del transfer overhead
+    \item Partizioni verificate: \texttt{gpu-excl} (EXCLUSIVE, 30 min max), \texttt{gpu-shared} (10 min)
+    \item I benchmark usano: \texttt{--partition=gpu-excl --nodelist=node09 --ntasks=1 --cpus-per-task=1}
+    \item L'allocazione esclusiva elimina interferenze da altri job
+\end{itemize}
+
+\subsection{Compilatore}
+\begin{itemize}
+    \item GCC 12.2 (OpenHPC): compila i target CPU
+    \item nvcc / CUDA 12.3 (in \texttt{/usr/local/cuda-12.3/}): compila CUDA \textbf{direttamente sul nodo 9} (lo script \texttt{run\_cuda.sh} include la compilazione perché nvcc è disponibile solo lì)
 \end{itemize}
 
 
 % ############################################################################
-\section{Checklist per il Report Finale (max 4 pagine)}
+\section{Risultati Sperimentali}
+\label{sec:risultati}
 % ############################################################################
 
-\begin{enumerate}[label=\textbf{\arabic*.}]
-    \item \textbf{Design choices}
-    \begin{itemize}
-        \item[$\square$] Motivare la scelta del Fibonacci/Multiply-Shift hashing
-        \item[$\square$] Motivare $P$ come potenza di 2 (shift vs modulo)
-        \item[$\square$] Discutere la costante $A$ (golden ratio, universalit\`a)
-    \end{itemize}
+Tutti i benchmark su node09, allocazione esclusiva, 11 ripetizioni, mediana riportata.
 
-    \item \textbf{Evidence auto-vectorization GCC}
-    \begin{itemize}
-        \item[$\square$] Flag usati per abilitare/disabilitare
-        \item[$\square$] Estratto del report (\texttt{-fopt-info-vec-*})
-        \item[$\square$] Interpretazione: cosa ha vettorizzato, cosa no, perch\'e
-    \end{itemize}
+\subsection{Tabella riassuntiva (N=100M, P=256)}
 
-    \item \textbf{Strategia intrinsics}
-    \begin{itemize}
-        \item[$\square$] Spiegare la decomposizione della mul 64-bit
-        \item[$\square$] Spiegare il packing 64$\to$32 bit
-        \item[$\square$] Gestione del tail loop
-    \end{itemize}
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Versione} & \textbf{Mediana (ms)} & \textbf{Mkeys/s} & \textbf{Speedup} & \textbf{BW (GB/s)} \\
+\midrule
+Baseline (no-vec) & 109.0 & 918 & 1.00$\times$ & 11.0 \\
+Auto-vectorized   &  76.3 & 1310 & 1.43$\times$ & 15.7 \\
+AVX2 intrinsics   &  83.3 & 1200 & 1.31$\times$ & 14.4 \\
+\midrule
+CUDA kernel-only  &   1.5 & 67\,320 & 73.3$\times$ & 808 \\
+CUDA end-to-end   &  97.0 & 1\,031 & 1.12$\times$ & 12.4 \\
+\bottomrule
+\end{tabular}
+\caption{BW = throughput $\times$ 12 B/key.}
+\end{table}
 
-    \item \textbf{Risultati}
-    \begin{itemize}
-        \item[$\square$] Tabella: $N$, $P$, tempo, throughput, speedup per ogni versione
-        \item[$\square$] Grafico: speedup al variare di $N$ e/o $P$
-        \item[$\square$] Discussione bottleneck (compute vs memory vs overhead)
-        \item[$\square$] Analisi distribuzione per diversi $P$ e \texttt{key\_space}
-    \end{itemize}
+\textbf{Correttezza}: tutti i checksum FNV-1a corrispondono tra baseline, autovec, AVX2 e CUDA per ogni combinazione $(N, P, \text{seed})$ testata (9 configurazioni verificate).
 
-    \item \textbf{CUDA (se implementato)}
-    \begin{itemize}
-        \item[$\square$] Verifica correttezza (checksum match)
-        \item[$\square$] Breakdown: H$\to$D, kernel, D$\to$H
-        \item[$\square$] Confronto kernel-only vs end-to-end vs CPU
-    \end{itemize}
+\subsection{Analisi Roofline}
+
+\begin{resultbox}
+\begin{itemize}
+    \item Operational intensity: $I = 4/12 = 0.333$ ops/byte
+    \item Tetto di bandwidth: $I \times B_\text{peak} = 0.333 \times 16.4 = 5.47$ Gops/s
+    \item Autovec raggiunge 5.29 Gops/s = \textbf{97\% del tetto}
+    \item AVX2 raggiunge 4.84 Gops/s = \textbf{88\% del tetto}
+    \item Baseline raggiunge 3.67 Gops/s = \textbf{67\% del tetto}
+\end{itemize}
+Tutte le implementazioni sono nella \textbf{regione bandwidth-bound} del Roofline.
+\end{resultbox}
+
+\textbf{Perché lo speedup è solo 1.3--1.4$\times$ invece di 8$\times$?}
+\begin{enumerate}
+    \item AVX2 processa 8 uint32 per istruzione, ma questo accelera solo $t_\text{comp}$
+    \item Il kernel è memory-bound ($t_\text{mem} > t_\text{comp}$ con SIMD)
+    \item Lo speedup viene dal miglior utilizzo della bandwidth: meno istruzioni $\Rightarrow$ meno stalli frontend $\Rightarrow$ prefetch più efficiente
+    \item Il tetto fisico è la bandwidth DRAM single-core (16.4 GB/s)
 \end{enumerate}
 
+\textbf{Perché autovec (1.43$\times$) $>$ AVX2 intrinsics (1.31$\times$)?}\\
+GCC applica \textbf{loop unrolling} e \textbf{software pipelining} automatici che il codice intrinsics ``rigido'' non beneficia. Il compilatore ha più libertà di riordinare le istruzioni per nascondere la latenza di memoria.
+
+\subsection{Metriche SIMD (L10)}
+
+Applicando le metriche della lezione 10 con $p = 8$ (8 lane AVX2 su uint32):
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Metrica} & \textbf{Autovec} & \textbf{AVX2} \\
+\midrule
+Speedup $S(8)$ & 1.46$\times$ & 1.27$\times$ \\
+Efficienza $E(8) = S/p$ & 18.2\% & 15.9\% \\
+Costo $C(8) = T_\text{par} \times p$ & $5.5 \times T_\text{seq}$ & $6.3 \times T_\text{seq}$ \\
+$f$ (Amdahl) & 64.2\% & 75.8\% \\
+$S_\text{max} = 1/f$ & 1.56$\times$ & 1.32$\times$ \\
+\bottomrule
+\end{tabular}
+\caption{$N=200$M, $P=256$. Efficienza $\sim$16--18\%: le lane SIMD sono in stallo per la maggior parte del tempo, aspettando dati dalla memoria.}
+\end{table}
+
+Il \textbf{costo} $C(p) = T_\text{par} \times p$ è 5--6$\times$ superiore a $T_\text{seq}$: la parallelizzazione SIMD ``spreca'' risorse hardware perché la memoria non riesce ad alimentare tutte le lane contemporaneamente.
+
+\subsection{Sweep dei parametri}
+
+\paragraph{N-sweep (P=256).} Lo speedup è stabile da 1M a 200M chiavi. Questo conferma il comportamento bandwidth-bound: al crescere di $N$, baseline e versioni vettorizzate scalano linearmente, mantenendo il rapporto costante.
+
+\paragraph{P-sweep (N=100M).} Throughput e speedup sono indipendenti da $P \in [2, 1024]$. Modificare $P$ cambia solo la costante di shift --- il traffico di memoria e il compute per chiave non cambiano.
+
+\paragraph{Key-space sweep (N=100M, P=256).} Throughput invariante al tasso di duplicati (\texttt{key\_space} da $10^3$ a $10^9$ e 0=full range). La hash è branchless con costo costante per chiave.
+
+
+\subsection{CUDA: breakdown dei tempi}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lrrc@{}}
+\toprule
+\textbf{Fase} & \textbf{Tempo (ms)} & \textbf{BW (GB/s)} & \textbf{\% totale} \\
+\midrule
+H$\to$D (800 MB) & 63.2 & 12.7 & 65.2\% \\
+Kernel           &  1.5 & 808  &  1.5\% \\
+D$\to$H (400 MB) & 32.3 & 12.4 & 33.3\% \\
+\midrule
+\textbf{Totale}  & \textbf{97.0} & --- & 100\% \\
+\bottomrule
+\end{tabular}
+\caption{$N=100$M, $P=256$. Il kernel CUDA è il 1.5\% del tempo totale.}
+\end{table}
+
+\textbf{Kernel-only}: 67\,320 Mkeys/s = 808 GB/s = \textbf{81\% della peak bandwidth HBM2} (993 GB/s). Ottimo utilizzo della GPU.
+
+\textbf{End-to-end}: $\sim$1\,031 Mkeys/s --- paragonabile alla CPU. Il trasferimento PCIe ($\sim$12.5 GB/s misurato, vs 25 GB/s teorico half-duplex) consuma il \textbf{98.5\% del tempo}.
+
+\textbf{Conclusione}: GPU offload di questo kernel \emph{isolato} non conviene. Diventa vantaggioso solo se:
+\begin{itemize}
+    \item I dati sono già residenti in GPU memory
+    \item Le fasi successive della pipeline (join, probe) eseguono anch'esse su GPU
+\end{itemize}
+
+
+\subsection{Stabilità delle misure}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Impl.} & \textbf{CoV medio} & \textbf{CoV max} & \textbf{Misure} \\
+\midrule
+Baseline & 1.98\% & 4.64\% & 20 \\
+Autovec  & 0.39\% & 3.27\% & 15 \\
+AVX2     & 3.46\% & 4.41\% & 20 \\
+\bottomrule
+\end{tabular}
+\caption{Coefficiente di variazione $\text{CoV} = \sigma / \tilde{x}$ su 55 misure totali. Nessuna supera il 5\%.}
+\end{table}
+
+L'autovec è la più stabile perché GCC ottimizza lo scheduling delle istruzioni. Il CoV è maggiore a $N$ piccolo (4.64\% a $N=1$M per il baseline) dove la granularità del timer domina, e scende sotto 0.1\% per $N \geq 50$M.
+
 
 % ############################################################################
-\section{Consigli e Pitfall}
+\section{Correttezza e Validazione}
 % ############################################################################
 
-\begin{warnbox}
-\textbf{Pitfall comuni:}
+\subsection{Strategia a tre livelli}
+
 \begin{enumerate}
-    \item \textbf{Overflow nella moltiplicazione AVX2}: assicurati di gestire correttamente tutti e 3 i prodotti parziali. Testa con chiavi grandi ($> 2^{32}$).
-    \item \textbf{Shift amount}: con $P=2$, lo shift \`e 63. Con $P=1024$, lo shift \`e 54. Verifica che il codice funzioni per tutti i valori.
-    \item \textbf{Allineamento}: \texttt{\_mm256\_load\_si256} richiede allineamento a 32 byte. Usa \texttt{aligned\_alloc} o \texttt{\_mm256\_loadu\_si256} (unaligned, leggermente pi\`u lento).
-    \item \textbf{Benchmarking}: non misurare la generazione delle chiavi! Solo il kernel di mapping.
-    \item \textbf{rsync permissions}: mai copiare in \texttt{\textasciitilde/} con \texttt{-a}. Sempre in una sottodirectory.
+    \item \textbf{Checksum FNV-1a} (per $N$ grandi): tutti i binari calcolano lo stesso hash dell'output. Probabilità di falso positivo $< 2^{-64}$.
+    \item \textbf{Element-wise} (per $N \leq 32$): stampa completa e confronto manuale.
+    \item \textbf{Verifica integrata} nel binario AVX2: esegue sia scalare che SIMD, confronta checksum, riporta prima posizione di mismatch.
+\end{enumerate}
+
+\subsection{Risultati di correttezza}
+\begin{itemize}
+    \item Checksum identici tra baseline, autovec, AVX2 e CUDA per \textbf{tutte} le 9 combinazioni $(N, P)$ testate
+    \item Element-wise: verificato manualmente per $N=16, P=4$
+    \item Distribuzione: $\max / \text{atteso} \leq 1.005$ per tutte le configurazioni
+\end{itemize}
+
+
+% ############################################################################
+\section{Consigli, Pitfall e Scelte di Portabilità}
+% ############################################################################
+
+\begin{warnbox}[title=\textbf{Pitfall implementativi}]
+\begin{enumerate}
+    \item \textbf{\texttt{<filesystem>}}: non disponibile su tutte le toolchain. Usiamo API POSIX (\texttt{stat()}, \texttt{opendir()}).
+    \item \textbf{\texttt{std::aligned\_alloc}}: non disponibile su macOS Apple libc++. Usiamo \texttt{posix\_memalign}.
+    \item \textbf{\texttt{key\_t}}: conflitto con POSIX \texttt{key\_t}. Usiamo \texttt{spm\_key\_t}.
+    \item \textbf{AVX2 su ARM}: il Makefile usa \texttt{uname -m} per abilitare \texttt{-mavx2} solo su x86\_64.
+    \item \textbf{\texttt{make clean} in SLURM}: non fare \texttt{make clean} in script batch che girano in parallelo con altri job --- cancella i binari dell'altro job.
+    \item \textbf{Allineamento}: \texttt{\_mm256\_load\_si256} richiede 32 byte. Usiamo \texttt{alloc\_aligned<T>(N, 32)}.
 \end{enumerate}
 \end{warnbox}
 
-\begin{tipbox}
-\textbf{Best practices:}
+\begin{tipbox}[title=\textbf{Best practices}]
 \begin{enumerate}
-    \item Inizia con $N$ piccolo per debuggare, poi scala.
-    \item Usa \texttt{\_\_builtin\_ctz(P)} per calcolare $\log_2(P)$ in modo sicuro.
-    \item Per il report, usa \texttt{gnuplot} o \texttt{matplotlib} per i grafici.
-    \item Compila con \texttt{-march=native} su node09 per abilitare tutte le estensioni supportate.
-    \item Verifica che il tuo codice compili anche con \texttt{-Wall -Wextra} senza warning.
-    \item La costante \texttt{HASH\_A} \`e la stessa in tutte le implementazioni $\Rightarrow$ garantisce output identici.
+    \item Testa sempre con $N$ piccolo ($N=16$) prima di benchmark grandi.
+    \item Usa \texttt{\_\_builtin\_ctz(P)} per calcolare $\log_2(P)$ (P potenza di 2).
+    \item Warmup: 1 esecuzione prima delle misurazioni per popolare cache e TLB.
+    \item \texttt{-march=native} su node09 abilita AVX2, FMA, e tutte le estensioni supportate.
+    \item Compila con \texttt{-Wall -Wextra}: nessun warning nel nostro codice.
 \end{enumerate}
 \end{tipbox}
 
@@ -701,18 +691,19 @@ Nel report, confronta il throughput misurato con questo upper bound teorico. Se 
 % ############################################################################
 
 \begin{enumerate}[label={[\arabic*]}]
-    \item P.\ Ferragina, \textit{Pearls of Algorithm Engineering}, Cambridge University Press, 2023. Cap.\ 8: The Dictionary Problem, \S8.2--8.3 (Hash Tables, Universal Hashing, Multiply-Add-Shift).
-    \item D.\ Knuth, \textit{The Art of Computer Programming, Vol.\ 3: Sorting and Searching}, 2nd ed., 1998. \S6.4 (Hashing, Fibonacci hashing).
+    \item P.\ Ferragina, \textit{Pearls of Algorithm Engineering}, Cambridge University Press, 2023. Cap.\ 8: The Dictionary Problem, §8.2--8.3.
+    \item D.\ Knuth, \textit{The Art of Computer Programming, Vol.\ 3: Sorting and Searching}, 2nd ed., 1998. §6.4 (Fibonacci hashing).
     \item Lezioni SPM 2025/26:
     \begin{itemize}
-        \item Lez.\ 7\&8: SIMD programming on CPUs (intrinsics, auto-vectorization)
-        \item Lez.\ 9: SIMT on GPUs (CUDA)
-        \item Lez.\ 10: Metrics and Laws (speedup, efficiency, Amdahl)
-        \item Lez.\ 5\&6: Shared Memory (cache, roofline model)
-        \item Lez.\ 4: SLURM
+        \item \textbf{L5\&6}: Shared Memory --- von Neumann bottleneck (slide 3--5), modello Roofline (slide 47--51), operational intensity, ridge point
+        \item \textbf{L7\&8}: SIMD on CPU --- speedup teorico (slide 7), intrinsics vs istruzioni (slide 8), SoA layout (slide 30, 39), condizioni auto-vectorization (slide 32--34, 40)
+        \item \textbf{L9}: SIMT on GPU --- specs A30 (slide 24), memory coalescing (slide 28)
+        \item \textbf{L10}: Metrics and Laws --- speedup/efficiency (slide 5--6), Amdahl's law (slide 24--28), overhead (slide 31--32)
+        \item \textbf{L4}: SLURM --- gestione job, partizioni, allocazione esclusiva
     \end{itemize}
-    \item M.\ Dietzfelbinger et al., ``A Reliable Randomized Algorithm for the Closest-Pair Problem'', \textit{J.\ Algorithms}, 1997. (Multiply-shift universality proof)
+    \item M.\ Dietzfelbinger et al., ``A Reliable Randomized Algorithm for the Closest-Pair Problem'', \textit{J.\ Algorithms}, 1997.
     \item Intel, \textit{Intrinsics Guide}: \url{https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html}
+    \item S.\ Blackman, D.\ Vigna, ``Scrambled Linear Pseudorandom Number Generators'', \textit{ACM Trans.\ Math.\ Softw.}, 2021 (xoshiro256**).
 \end{enumerate}
 
 
