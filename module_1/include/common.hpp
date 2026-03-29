@@ -18,77 +18,56 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-/*
- * Tipi base:
- * Viene utilizzato un alias diverso da key_t per evitare il conflitto con POSIX key_t
- * (sys/types.h definisce key_t come int32_t su macOS).
- */
-using spm_key_t = uint64_t; //chiave - 64bit 
-using part_t    = uint32_t; //id di partizione 
+//spm_key_t instead of key_t to avoid POSIX conflict (sys/types.h)
+using spm_key_t = uint64_t;  //64-bit key
+using part_t    = uint32_t;  //partition id (32 bit)
 
-/*
- * Hash function: XOR-fold + Fibonacci multiply-shift a 32 bit.
- *
- * La chiave a 64 bit viene prima "ripiegata" in 32 bit tramite XOR
- * delle due metà (k_lo ^ k_hi), poi moltiplicata per la costante
- * Fibonacci a 32 bit e shiftata a destra.
- *
- * Questa scelta è motivata dalla compatibilità SIMD:
- * - AVX2 ha _mm256_mullo_epi32 nativo (8 mul 32x32→32 in una istruzione)
- * - NON ha _mm256_mullo_epi64 (disponibile solo da AVX-512)
- * - Una mul64 in AVX2 richiede 3x vpmuludq + shift + add → overhead
- *
- * La XOR-fold preserva l'entropia di entrambe le metà della chiave,
- * e la moltiplicazione Fibonacci garantisce buona distribuzione
- * (Knuth, TAOCP Vol. 3: Fibonacci hashing per tabelle).
- *
- * Distribuzione verificata: max/atteso ≤ 1.005 su 100M chiavi.
- */
-static constexpr uint32_t HASH_A32 = 0x9E3779B9u; // floor(2^32 / phi)
+/*--- Hash function ---
+XOR-fold + Fibonacci multiply-shift (32-bit).
+The 64-bit key is folded into 32 bits via XOR of its two halves,
+then multiplied by the Fibonacci constant and right-shifted.
+Using 32-bit multiply is essential for SIMD: _mm256_mullo_epi32
+is native in AVX2, while a 64-bit multiply would require a
+3-instruction vpmuludq decomposition.
+Distribution verified: max/expected <= 1.005 on 100M keys, P=256.
+*/
+static constexpr uint32_t HASH_A32 = 0x9E3779B9u; //floor(2^32 / phi)
 
-/* h(k) = ((k_lo ^ k_hi) * A32) >> (32 - log2(P))
- * Restituisce un intero in [0, P) con P potenza di 2.
- * shift32 = 32 - log2(P), pre-calcolato dal chiamante.
- */
+//kernel fn that compute: h(k) = ((k_lo ^ k_hi) * A32) >> shift32
+//returns an integer in [0, P) with P power of 2.
+//shift32 = 32 - log2(P), precomputed by the caller
 inline part_t hash_key(spm_key_t key, unsigned shift32) {
     uint32_t k_lo = static_cast<uint32_t>(key);
     uint32_t k_hi = static_cast<uint32_t>(key >> 32);
     return (uint32_t)(((k_lo ^ k_hi) * HASH_A32) >> shift32);
 }
 
-// Calcolo dello shift: per P partizioni (potenza di 2), shift = 32 - log2(P)
 inline unsigned compute_shift(uint32_t P) {
     return 32 - __builtin_ctz(P);
 }
 
 
-// Generatore di chiavi deterministico (xoshiro256**).
-// Stato inizializzato con SplitMix64 a partire dal seed.
-// Se key_space > 0 le chiavi sono ridotte mod key_space (per controllare i duplicati).
+// --- Key generator (xoshiro256**) ---
+//state seeded via SplitMix64 from the user seed
+//if key_space > 0, keys are reduced mod key_space to control duplicates
 class KeyGenerator {
 public:
-    
-    //Riempie un array preallocato con N chiavi pseudo-casuali generate deterministicamente a partire dal seed
     static void generate(spm_key_t* keys, size_t N, uint64_t seed, uint64_t key_space = 0) {
-        
-        //algo xoshiro256**
-        static constexpr uint64_t SPLITMIX_INC = 0x9E3779B97F4A7C15ULL; // golden ratio 64-bit
-        uint64_t s[4]; //stato (arr di 4 uint64_t)
-        for (int i = 0; i < 4; i++) { //init dello stato -> SplitMix64 per trasformare il seed 
-            seed += SPLITMIX_INC; //incremento golden ratio 
+        static constexpr uint64_t SPLITMIX_INC = 0x9E3779B97F4A7C15ULL;
+        uint64_t s[4];
+        for (int i = 0; i < 4; i++) {
+            seed += SPLITMIX_INC;
             uint64_t z = seed;
-            //mixing (sfrutta xor-shift-multiply):
             z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
             z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
             z = z ^ (z >> 31);
             s[i] = z;
         }
 
-        for (size_t i = 0; i < N; i++) { //fase di "scrambler"
+        for (size_t i = 0; i < N; i++) {
             const uint64_t result = rotl(s[1] * 5, 7) * 9;
-            keys[i] = (key_space > 0) ? (result % key_space) : result; //controllo duplicati (per test hash fn con input ad alta duplicazione)
+            keys[i] = (key_space > 0) ? (result % key_space) : result;
 
-            //aggiornamento dello stato:
             const uint64_t t = s[1] << 17;
             s[2] ^= s[0]; s[3] ^= s[1];
             s[1] ^= s[2]; s[0] ^= s[3];
@@ -98,25 +77,15 @@ public:
     }
 
 private:
-    //rotazione a sinistra di k bit (bit uscenti "rientrano" a destra)
-    static inline uint64_t rotl(uint64_t x, int k) { 
+    static inline uint64_t rotl(uint64_t x, int k) {
         return (x << k) | (x >> (64 - k));
     }
 };
 
 
-// Allocazione allineata a 32 byte (richiesto da AVX2 _mm256_load_*).
-// Usa posix_memalign perché std::aligned_alloc non è disponibile su macOS.
+// --- Aligned allocation (32-byte, required by AVX2) ---
 inline void* aligned_alloc_wrapper(size_t alignment, size_t size) {
-    // posix_memalign richiede che size sia multiplo di alignment -> arrotondiamo per eccesso.
-    // Es con alignment=32:
-    //   size=100 -> 100+31=131, 131 & ~31 = 131 & 0x...E0 = 128
-    //   size=64  -> 64+31=95,   95  & ~31 = 95  & 0x...E0 = 64  
-    // ~(alignment-1) azzera i bit bassi, forzando il multiplo.
     size_t aligned_size = (size + alignment - 1) & ~(alignment - 1);
-
-    // posix_memalign scrive in ptr l'indirizzo allocato, garantendo che l'indirizzo sia multiplo di alignment
-    // => 0 in caso di successo / codice errore altrimenti   
     void* ptr = nullptr;
     int ret = posix_memalign(&ptr, alignment, aligned_size);
     if (ret != 0 || !ptr) {
@@ -126,55 +95,52 @@ inline void* aligned_alloc_wrapper(size_t alignment, size_t size) {
     return ptr;
 }
 
-// Wrapper tipizzato: alloca quantity elementi di tipo T, allineati a 32 byte
-// Uso: spm_key_t* keys = alloc_aligned<spm_key_t>(N)
 template<typename T>
 T* alloc_aligned(size_t quantity, size_t alignment = 32) {
     return static_cast<T*>(aligned_alloc_wrapper(alignment, quantity * sizeof(T)));
 }
 
 
-// Checksum FNV-1a sull'array di output per confrontare le implementazioni senza stampare N valori
+// --- Checksum (FNV-1a) for cross-implementation comparison ---
 inline uint64_t compute_checksum(const part_t* part_ids, size_t N) {
     uint64_t h = 0xCBF29CE484222325ULL;
-    for (size_t i = 0; i < N; i++) { //per ogni elemento XOR con l'elemento, poi moltiplica per il prime FNV
+    for (size_t i = 0; i < N; i++) {
         h ^= static_cast<uint64_t>(part_ids[i]);
-        h *= 0x100000001B3ULL; //prime FNV => checksum sensibile all'ordine e posizione degli el.
+        h *= 0x100000001B3ULL;
     }
     return h;
 }
 
 
-// Caricamento dataset binari via mmap (zero-copy)
-// Formato file (scritto da dataset_creator):
+// --- Dataset loading via mmap ---
+// Binary format (written by dataset_creator):
 //   [0..7]   magic  0x53504D4B455953AA
 //   [8..15]  N
 //   [16..23] seed
 //   [24..31] key_space
-//   [32..39] riservato
-//   [40..]   N x uint64_t chiavi
+//   [32..39] reserved
+//   [40..]   N x uint64_t keys
 
 static constexpr uint64_t DATASET_MAGIC = 0x53504D4B455953AAULL;
 static constexpr size_t DATASET_HEADER_SIZE = 40;
 
 struct DatasetView {
-    const spm_key_t* keys; //punta nel file mappato
+    const spm_key_t* keys;
     size_t N;
     uint64_t seed;
     uint64_t key_space;
-    void* mmap_base; //usato per munmap
+    void* mmap_base;
     size_t mmap_len;
 };
 
-//carica il dataset usando mmap
+//load the dataset using Memory Mapping
 inline bool dataset_load(const char* path, DatasetView& view) {
-    int fd = open(path, O_RDONLY); //apertura in readonly
+    int fd = open(path, O_RDONLY);
     if (fd < 0) {
         std::cerr << "cannot open dataset: " << path << "\n";
         return false;
     }
-    
-    //ottenimento della dim del file:
+
     struct stat st;
     if (fstat(fd, &st) != 0) { close(fd); return false; }
     size_t file_size = static_cast<size_t>(st.st_size);
@@ -184,8 +150,6 @@ inline bool dataset_load(const char* path, DatasetView& view) {
         close(fd); return false;
     }
 
-    //mmap mappa il file in mem virtuale => base punta al contenuto del file 
-    // -> uso di demand paging da parte del kernel del SO 
     void* base = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
     close(fd);
     if (base == MAP_FAILED) {
@@ -193,7 +157,6 @@ inline bool dataset_load(const char* path, DatasetView& view) {
         return false;
     }
 
-    //parsing dell'header: 
     const uint64_t* hdr = static_cast<const uint64_t*>(base);
     if (hdr[0] != DATASET_MAGIC) {
         std::cerr << "bad magic in " << path << "\n";
@@ -204,12 +167,11 @@ inline bool dataset_load(const char* path, DatasetView& view) {
     view.N = static_cast<size_t>(hdr[1]);
     view.seed = hdr[2];
     view.key_space = hdr[3];
-    view.keys = reinterpret_cast<const spm_key_t*>(static_cast<const char*>(base) + DATASET_HEADER_SIZE); //chiavi partono da offset 40
+    view.keys = reinterpret_cast<const spm_key_t*>(
+        static_cast<const char*>(base) + DATASET_HEADER_SIZE);
     view.mmap_base = base;
     view.mmap_len  = file_size;
 
-    //OSS: uso di mmap per: zero copy + lazy loading + shared mem
-    
     size_t expected = DATASET_HEADER_SIZE + view.N * sizeof(spm_key_t);
     if (file_size != expected) {
         std::cerr << "size mismatch in " << path
@@ -220,7 +182,6 @@ inline bool dataset_load(const char* path, DatasetView& view) {
     return true;
 }
 
-//rilascia la mappatura => puntatori non più validi
 inline void dataset_unload(DatasetView& view) {
     if (view.mmap_base && view.mmap_base != MAP_FAILED) {
         munmap(view.mmap_base, view.mmap_len);
@@ -230,46 +191,38 @@ inline void dataset_unload(DatasetView& view) {
 }
 
 
-// Utilities per il benchmarking: mediana, stddev, throughput.
+// --- Benchmarking utilities ---
 
 struct BenchResult {
-    double median_ms; //tempo mediano
-    double stddev_ms; //deviazione standard
-    double throughput_Mkeys_per_s; //Mkeys = milioni di chiavi al s 
+    double median_ms;
+    double stddev_ms;
+    double throughput_Mkeys_per_s;
     size_t N;
 };
 
-/**
- *  Ordina i tempi, prende la medianat, calcola media, varianza e throughput 
-*/
 inline BenchResult benchmark(const std::vector<double>& times_ms, size_t N) {
     BenchResult r{};
     r.N = N;
 
     auto sorted = times_ms;
-    std::sort(sorted.begin(), sorted.end()); //ordina i tempi
-    size_t mid = sorted.size() / 2; //el di mezzo
-    //calcolo mediana come media tra due elementi di mezzo se size è pari / el di mezzo altrimenti 
+    std::sort(sorted.begin(), sorted.end());
+    size_t mid = sorted.size() / 2;
     r.median_ms = (sorted.size() % 2 == 0)
                   ? (sorted[mid - 1] + sorted[mid]) / 2.0
                   : sorted[mid];
 
-    //calcolo della media:
     double mean = 0;
     for (auto t : sorted) mean += t;
     mean /= static_cast<double>(sorted.size());
 
-    //calcolo della varianza e deviazione standard:
     double var = 0;
     for (auto t : sorted) var += (t - mean) * (t - mean);
     r.stddev_ms = std::sqrt(var / static_cast<double>(sorted.size()));
 
-    //calcolo del throughput (in Mkeys/s):
     r.throughput_Mkeys_per_s = (static_cast<double>(N) / 1e6) / (r.median_ms / 1e3);
     return r;
 }
 
-//utility fn per stampare i risultati
 inline void print_result(const std::string& label, const BenchResult& r) {
     std::cout << std::left << std::setw(30) << label
               << "  N=" << std::setw(12) << r.N

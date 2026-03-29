@@ -1,41 +1,37 @@
-# SPM Module 1 — Partitioned Hash Join: Partition Mapping Kernel
+# SPM Module 1 — Partition Mapping Kernel
 
 ## Project Structure
 
 ```
 module_1/
 ├── Makefile                  # Build system
-├── README.md                 # This file
 ├── include/
 │   └── common.hpp            # Shared types, hash function, key generation, timing
 ├── src/
 │   ├── plain.cpp             # Plain C++ (compiled as baseline + autovec)
 │   ├── avx2.cpp              # AVX2 intrinsics version
-│   └── cuda_kernel.cu        # CUDA version (optional)
+│   ├── cuda_kernel.cu        # CUDA version (optional)
+│   └── dataset_creator.cpp   # Binary dataset generator
 ├── scripts/
-│   ├── run_bench.sh          # SLURM script for CPU benchmarks on node09
-│   └── run_cuda.sh           # SLURM script for CUDA benchmarks on node09
-├── results/                  # Benchmark output and vectorization reports
-├── report/                   # PDF report (max 4 pages)
-└── guide/                    # LaTeX implementation guide
+│   ├── run_bench.sh          # SLURM script for CPU benchmarks
+│   └── run_cuda.sh           # SLURM script for CUDA benchmarks
+├── analysis/                 # Python scripts for parsing results and plotting
+├── results/                  # Benchmark output, CSV, vectorization reports
+│   └── plots/                # Generated figures
+└── report/                   # PDF report (LaTeX source)
 ```
 
-## Build Instructions
+## Build
 
-### On spmcluster (node09)
+On spmcluster (node09):
 
 ```bash
-# Build all CPU targets
-make all
-
-# Build CUDA target (requires nvcc)
-make cuda
-
-# Clean
+make all        # builds baseline, autovec, avx2, dataset_creator
+make cuda       # builds CUDA target (requires nvcc)
 make clean
 ```
 
-### Binaries produced
+### Binaries
 
 | Binary              | Description                                      |
 |---------------------|--------------------------------------------------|
@@ -54,75 +50,60 @@ make clean
 |------------|-------------------------------------------------|---------|
 | `N`        | Number of keys                                  | required|
 | `P`        | Number of partitions (must be power of 2)       | required|
-| `seed`     | RNG seed for reproducible key generation        | 42      |
+| `seed`     | RNG seed                                        | 42      |
 | `key_space`| Key universe size (0 = full 64-bit range)       | 0       |
-| `reps`     | Number of benchmark repetitions                 | 11      |
+| `reps`     | Benchmark repetitions                           | 11      |
 
 ## Correctness Verification
 
-### Checksum verification
-All implementations compute and display a **FNV-1a checksum** over the output array. Matching checksums across implementations confirms identical outputs.
+**Checksum**: all implementations compute an FNV-1a checksum over the output array. Matching checksums across implementations confirms identical output.
 
-### Element-wise comparison
-For **N ≤ 32**, all implementations print element-by-element output, allowing manual inspection and exact comparison.
+**Element-wise comparison**: for N ≤ 32, every implementation prints element-by-element output for manual inspection.
 
-### AVX2 built-in check
-The `avx2` binary internally runs **both** the scalar reference and AVX2 kernel, then compares checksums and reports PASS/FAIL.
+**AVX2 built-in check**: the `avx2` binary runs both a scalar reference and the AVX2 kernel internally, compares checksums, and reports OK/FAIL before benchmarking.
 
-### Quick correctness test
+**Quick test**:
 ```bash
-make test_correctness
+make test_correctness   # runs all implementations with N=16, P=4
 ```
 
-## Running Benchmarks on spmcluster
+## Benchmarks
 
 ```bash
-# CPU benchmarks (submits to node09 via SLURM)
+# CPU (submits to node09 via SLURM)
 sbatch scripts/run_bench.sh
 
-# CUDA benchmarks (requires GPU partition)
+# CUDA
 sbatch scripts/run_cuda.sh
 
-# Check job status
-squeue --me
+# Parse results and generate plots
+python3 analysis/parse_results.py
+python3 analysis/plot_results.py
 ```
 
 ## Vectorization Report
 
-After building `autovec`, GCC vectorization reports are saved to:
+After building `autovec`, GCC reports are saved to:
 - `results/vec_report_optimized.txt` — successfully vectorized loops
-- `results/vec_report_missed.txt` — missed vectorization opportunities
+- `results/vec_report_missed.txt` — missed opportunities (empty = none missed)
 
-## Design Choices
+## Dataset Creator
 
-### Hash Function: XOR-fold + Fibonacci Multiply-Shift (32-bit)
-- **h(k) = ((k_lo ⊕ k_hi) × A₃₂) >> (32 − log₂P)** where A₃₂ = 0x9E3779B9
-- XOR-fold preserves entropy from both halves of the 64-bit key
-- Only XOR + mul32 + shift — no division/modulo
-- **SIMD-native**: `_mm256_mullo_epi32` (vpmulld) is a native AVX2 instruction
-  (unlike mul64, which would require 3× vpmuludq decomposition)
-- Excellent distribution from golden-ratio constant (Knuth, TAOCP Vol.3)
-
-### P as power of 2
-- Enables bit-shift instead of modulo for partition mapping
-- Critical for SIMD: shift amount is uniform across all lanes
-
-## Analysis and Plots
+`dataset_creator` generates binary key files that can be loaded via `mmap` (zero-copy). In Module 1 the kernel binaries generate keys in-memory, so the dataset creator is not used directly during benchmarks. It is included for future modules where separating data generation from kernel timing will be needed (e.g., for multi-threaded partitioning where all threads must start from the same pre-generated dataset).
 
 ```bash
-# Parse raw benchmark results into CSV
-python3 analysis/parse_results.py results/bench_cpu.txt results/bench_cuda.txt
-
-# Generate all plots
-python3 analysis/plot_results.py
+bin/dataset_creator              # create default datasets (1M, 10M, 100M, 200M)
+bin/dataset_creator --list       # list existing datasets
+bin/dataset_creator --custom -N 50000000
 ```
 
-Plots are saved to `results/plots/`.
+## Memory Requirements
+
+At N=200M the kernel allocates ~2.4 GB (1.6 GB input + 0.8 GB output). The cluster nodes have sufficient RAM; on machines with less than 4 GB, use smaller N values.
 
 ## Test Environment
 
-- **Cluster**: spmcluster.unipi.it, node09 (gpu-excl partition, exclusive access)
-- **CPU**: AMD EPYC 7301 (Zen 1 / Naples), 2 sockets × 16 cores × 2 threads = 64 CPUs, DDR4-2666
+- **CPU**: AMD EPYC 7301 (Zen 1), DDR4-2666
 - **GPU**: NVIDIA A30 (HBM2, 993 GB/s, PCIe 4.0 x16)
 - **Compiler**: GCC 12.2, nvcc (CUDA 12.3)
-- **OS**: Linux (OpenHPC)
+- **Node**: spmcluster node09, exclusive allocation

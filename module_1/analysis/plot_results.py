@@ -53,11 +53,20 @@ IMPL_ORDER = ['baseline', 'autovec', 'avx2', 'cuda']
 
 
 def format_N(n):
-    """1000000 -> '1M', 10000000 -> '10M'."""
-    if n >= 1e9: return f'{n/1e9:.0f}G'
-    if n >= 1e6: return f'{n/1e6:.0f}M'
-    if n >= 1e3: return f'{n/1e3:.0f}K'
-    return str(int(n))
+    """1000000 -> '$10^6$', 50000000 -> '$5 \\times 10^7$'."""
+    import math
+    if n <= 0:
+        return str(int(n))
+    exp = int(math.log10(n))
+    coeff = n / (10 ** exp)
+    if abs(coeff - round(coeff)) < 0.01:
+        coeff = int(round(coeff))
+    else:
+        return f'{n:.0g}'
+    if coeff == 1:
+        return f'$10^{{{exp}}}$'
+    else:
+        return f'${coeff}' + r'\times' + f'10^{{{exp}}}$'
 
 
 def save_fig(fig, outdir, name, fmt):
