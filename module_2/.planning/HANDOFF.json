@@ -1,0 +1,55 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-04-10T12:14:14.291Z",
+  "phase": "module_2_report",
+  "phase_name": "SPM Module 2 — Hash Join Report + Optimization",
+  "phase_dir": "module_2",
+  "plan": 1,
+  "task": 4,
+  "total_tasks": 6,
+  "status": "paused",
+  "completed_tasks": [
+    {"id": 1, "name": "Weak scaling anomaly diagnosed + report.tex/report_ITA.tex updated", "status": "done"},
+    {"id": 2, "name": "Colleague implementation compared — identified cyclic vs LPT, unordered_map vs FlatCountMap", "status": "done"},
+    {"id": 3, "name": "FlatCountMap implemented + cyclic scheduling + weak_scaling_5M added to bench_slurm.sh", "status": "done"},
+    {"id": 4, "name": "FlatCountMap hash bug fixed (identity hash key&mask, not Fibonacci) — job 555404 submitted", "status": "in_progress", "progress": "SLURM job 555404 running on node01, not yet complete at pause time"}
+  ],
+  "remaining_tasks": [
+    {"id": 5, "name": "Fetch results from cluster + regenerate all plots", "status": "not_started"},
+    {"id": 6, "name": "Update report.tex + report_ITA.tex with new data and compile PDFs", "status": "not_started"}
+  ],
+  "blockers": [
+    {
+      "description": "SLURM job 555404 must complete before results can be fetched",
+      "type": "external",
+      "workaround": "SSH to cluster and check: squeue -u g.marsili9. If done, rsync results/."
+    }
+  ],
+  "human_actions_pending": [],
+  "decisions": [
+    {
+      "decision": "Replaced LPT+atomic with cyclic partition scheduling",
+      "rationale": "Fibonacci hash distributes partitions uniformly → cyclic gives equivalent load balance with zero atomic/sort overhead",
+      "phase": "optimization"
+    },
+    {
+      "decision": "FlatCountMap slot hash = key & mask (identity), NOT Fibonacci",
+      "rationale": "Fibonacci hash 0x9E3779B97F4A7C15 is correlated with partitioning hash 0x9E3779B9. All keys in a partition cluster into the same 128-slot range causing infinite-length probing. Identity hash is uncorrelated and distributes uniformly.",
+      "phase": "bugfix"
+    },
+    {
+      "decision": "Added weak_scaling_5M.csv experiment (NR_BASE=5M per thread)",
+      "rationale": "Colleague uses 5M base — larger workload makes PAR(t=1) overhead <4% instead of 14%, showing monotone WSE curve for comparison",
+      "phase": "benchmarks"
+    }
+  ],
+  "uncommitted_files": [
+    "include/join_phases.hpp",
+    "src/hashjoin_parallel.cpp",
+    "scripts/bench_slurm.sh",
+    "report/report.tex",
+    "report/report_ITA.tex"
+  ],
+  "next_action": "1) Check if SLURM job 555404 is done: ssh cluster 'squeue -u g.marsili9'. 2) If done: rsync results from cluster. 3) Run python3 analysis/plot_results.py to regenerate plots. 4) Update report tables with new data. 5) Compile PDFs.",
+  "context_notes": "New seq time for NR=1M is now ~25ms (was 214ms, 8.4x speedup from FlatCountMap). Strong scaling should show much better numbers. The weak_scaling_5M experiment will show a monotone WSE curve. The colleague's implementation uses std::unordered_map — we are now faster on the join phase."
+}
