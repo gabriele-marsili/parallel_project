@@ -1,0 +1,90 @@
+============================================
+ SPM Module 2 — Benchmark Suite
+ Node:  node01
+ Cores: 32
+ Date:  Sun Apr  5 12:52:38 PM CEST 2026
+ CPU:   Intel(R) Xeon(R) CPU E5-2640 v2 @ 2.00GHz
+============================================
+
+[1/5] Strong scaling...
+  NR=10000000
+    seq: s
+    t=1: s
+    t=2: s
+    t=4: s
+    t=8: s
+    t=10: s
+    t=14: s
+    t=20: s
+  NR=20000000
+    seq: s
+    t=1: s
+    t=2: s
+    t=4: s
+    t=8: s
+    t=10: s
+    t=14: s
+    t=20: s
+[2/5] Weak scaling...
+  t=1 NR=1000000: s
+  t=2 NR=2000000: s
+  t=4 NR=4000000: s
+  t=8 NR=8000000: s
+  t=10 NR=10000000: s
+  t=14 NR=14000000: s
+  t=20 NR=20000000: s
+[3/5] Phase breakdown...
+[4/5] Partition sensitivity...
+  P=16: s
+  P=32: s
+  P=64: s
+  P=128: s
+  P=256: s
+  P=512: s
+  P=1024: s
+[5/5] Duplicate density...
+  max_key=100: seq=s par=s
+  max_key=1000: seq=s par=s
+  max_key=10000: seq=s par=s
+  max_key=100000: seq=s par=s
+  max_key=1000000: seq=s par=s
+  max_key=10000000: seq=s par=s
+
+[✓] All benchmarks complete!
+=== strong_scaling.csv ===
+nr,ns,threads,time_seq,time_par
+10000000,20000000,1,,
+10000000,20000000,2,,
+10000000,20000000,4,,
+10000000,20000000,8,,
+10000000,20000000,10,,
+10000000,20000000,14,,
+10000000,20000000,20,,
+20000000,40000000,1,,
+20000000,40000000,2,,
+20000000,40000000,4,,
+20000000,40000000,8,,
+20000000,40000000,10,,
+20000000,40000000,14,,
+20000000,40000000,20,,
+
+=== phase_breakdown.csv ===
+threads,histogram_R_ms,scatter_R_ms,histogram_S_ms,scatter_S_ms,join_local_ms,total_ms
+1,,,,,,
+1,,,,,,
+2,,,,,,
+4,,,,,,
+8,,,,,,
+10,,,,,,
+14,,,,,,
+20,,,,,,
+
+=== weak_scaling.csv ===
+threads,nr,ns,time_sec
+1,1000000,2000000,
+2,2000000,4000000,
+4,4000000,8000000,
+8,8000000,16000000,
+10,10000000,20000000,
+14,14000000,28000000,
+20,20000000,40000000,

@@ -1,0 +1,36 @@
+============================================
+ SPM Module 2 — Benchmark Suite
+ Node:  node01
+ Cores: 32
+ Date:  Sun Apr  5 12:50:13 PM CEST 2026
+ CPU:   Intel(R) Xeon(R) CPU E5-2640 v2 @ 2.00GHz
+============================================
+
+[1/5] Strong scaling...
+  NR=10000000
+    seq: s
+    t=1: s
+    t=2: s
+    t=4: s
+    t=8: s
+    t=10: s
+    t=14: s
+    t=20: s
+  NR=20000000
+    seq: s
+    t=1: s
+    t=2: s
+    t=4: s
+    t=8: s
+    t=10: s
+    t=14: s
+    t=20: s
+[2/5] Weak scaling...
+  t=1 NR=1000000: s
+  t=2 NR=2000000: s
+  t=4 NR=4000000: s
+  t=8 NR=8000000: s
+  t=10 NR=10000000: s
+  t=14 NR=14000000: s
+  t=20 NR=20000000: s
+[3/5] Phase breakdown...

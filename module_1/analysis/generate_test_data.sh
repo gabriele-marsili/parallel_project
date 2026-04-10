@@ -1,12 +1,10 @@
 #!/bin/bash
-# ============================================================================
-# generate_test_data.sh — Esegue i benchmark locali (solo baseline + autovec)
+
+# Esegue i benchmark locali (solo baseline + autovec)
 # e salva l'output nel formato atteso da parse_results.py.
-#
-# Serve per testare la pipeline di analisi in locale prima del cluster.
-# Su Apple Silicon non ci sono AVX2 né CUDA, quindi i grafici mostreranno
-# solo le due implementazioni scalari.
-# ============================================================================
+
+
+
 
 set -e
 cd "$(dirname "$0")/.."

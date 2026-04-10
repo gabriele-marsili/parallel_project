@@ -1,9 +1,12 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.11.1)  29 MAR 2026 18:26
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.11.1)  10 APR 2026 16:41
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
-**report_ITA.tex
-(./report_ITA.tex
+**/Users/piccoletto/Desktop/Everything/pisa/corsi/magistrale/primo_anno/SPM/pro
+ject_and_midterms/module_2/report/report.tex
+
+(/Users/piccoletto/Desktop/Everything/pisa/corsi/magistrale/primo_anno/SPM/proj
+ect_and_midterms/module_2/report/report.tex
 LaTeX2e <2024-11-01> patch level 2
 L3 programming layer <2025-01-18>
 (/usr/local/texlive/2025/texmf-dist/tex/latex/base/article.cls
@@ -42,21 +45,20 @@ eX and XeLaTeX
 \bbl@readstream=\read2
 \bbl@dirlevel=\count271
 
-(/usr/local/texlive/2025/texmf-dist/tex/generic/babel-italian/italian.ldf
-Language: italian 2024/10/10 v.1.5.01 Italian support for the babel system
-\it@lettering=\count272
-\it@doublequoteactive=\count273
-\it@ISOcompliance=\count274
+(/usr/local/texlive/2025/texmf-dist/tex/generic/babel-english/english.ldf
+Language: english 2017/06/06 v3.3r English support from the babel system
+Package babel Info: Hyphen rules for 'canadian' set to \l@english
+(babel)             (\language0). Reported on input line 102.
+Package babel Info: Hyphen rules for 'australian' set to \l@ukenglish
+(babel)             (\language22). Reported on input line 105.
+Package babel Info: Hyphen rules for 'newzealand' set to \l@ukenglish
+(babel)             (\language22). Reported on input line 108.
 ))
-(/usr/local/texlive/2025/texmf-dist/tex/generic/babel/locale/it/babel-italian.t
+(/usr/local/texlive/2025/texmf-dist/tex/generic/babel/locale/en/babel-english.t
 ex
-Package babel Info: Importing font and identification data for italian
-(babel)             from babel-it.ini. Reported on input line 11.
-) (/usr/local/texlive/2025/texmf-dist/tex/latex/etoolbox/etoolbox.sty
-Package: etoolbox 2025/02/11 v2.5l e-TeX tools for LaTeX (JAW)
-\etb@tempcnta=\count275
-)
-(/usr/local/texlive/2025/texmf-dist/tex/latex/geometry/geometry.sty
+Package babel Info: Importing font and identification data for english
+(babel)             from babel-en.ini. Reported on input line 11.
+) (/usr/local/texlive/2025/texmf-dist/tex/latex/geometry/geometry.sty
 Package: geometry 2020/01/02 v5.9 Page Geometry
 
 (/usr/local/texlive/2025/texmf-dist/tex/latex/graphics/keyval.sty
@@ -69,9 +71,9 @@ Package: ifvtex 2019/10/25 v1.7 ifvtex legacy package. Use iftex instead.
 (/usr/local/texlive/2025/texmf-dist/tex/generic/iftex/iftex.sty
 Package: iftex 2024/12/12 v1.0g TeX engine tests
 ))
-\Gm@cnth=\count276
-\Gm@cntv=\count277
-\c@Gm@tempcnt=\count278
+\Gm@cnth=\count272
+\Gm@cntv=\count273
+\c@Gm@tempcnt=\count274
 \Gm@bindingoffset=\dimen143
 \Gm@wd@mp=\dimen144
 \Gm@odd@mp=\dimen145
@@ -114,12 +116,12 @@ Package: booktabs 2020/01/12 v1.61803398 Publication quality tables
 \cmidrulesep=\dimen160
 \cmidrulekern=\dimen161
 \defaultaddspace=\dimen162
-\@cmidla=\count279
-\@cmidlb=\count280
+\@cmidla=\count275
+\@cmidlb=\count276
 \@aboverulesep=\dimen163
 \@belowrulesep=\dimen164
-\@thisruleclass=\count281
-\@lastruleclass=\count282
+\@thisruleclass=\count277
+\@lastruleclass=\count278
 \@thisrulewidth=\dimen165
 )
 (/usr/local/texlive/2025/texmf-dist/tex/latex/amsmath/amsmath.sty
@@ -142,14 +144,14 @@ Package: amsbsy 1999/11/29 v1.2d Bold Symbols
 (/usr/local/texlive/2025/texmf-dist/tex/latex/amsmath/amsopn.sty
 Package: amsopn 2022/04/08 v2.04 operator names
 )
-\inf@bad=\count283
+\inf@bad=\count279
 LaTeX Info: Redefining \frac on input line 233.
-\uproot@=\count284
-\leftroot@=\count285
+\uproot@=\count280
+\leftroot@=\count281
 LaTeX Info: Redefining \overline on input line 398.
 LaTeX Info: Redefining \colon on input line 409.
-\classnum@=\count286
-\DOTSCASE@=\count287
+\classnum@=\count282
+\DOTSCASE@=\count283
 LaTeX Info: Redefining \ldots on input line 495.
 LaTeX Info: Redefining \dots on input line 498.
 LaTeX Info: Redefining \cdots on input line 619.
@@ -162,20 +164,20 @@ LaTeX Info: Redefining \Bigg on input line 724.
 \big@size=\dimen168
 LaTeX Font Info:    Redeclaring font encoding OML on input line 742.
 LaTeX Font Info:    Redeclaring font encoding OMS on input line 743.
-\macc@depth=\count288
+\macc@depth=\count284
 LaTeX Info: Redefining \bmod on input line 904.
 LaTeX Info: Redefining \pmod on input line 909.
 LaTeX Info: Redefining \smash on input line 939.
 LaTeX Info: Redefining \relbar on input line 969.
 LaTeX Info: Redefining \Relbar on input line 970.
-\c@MaxMatrixCols=\count289
+\c@MaxMatrixCols=\count285
 \dotsspace@=\muskip17
-\c@parentequation=\count290
-\dspbrk@lvl=\count291
+\c@parentequation=\count286
+\dspbrk@lvl=\count287
 \tag@help=\toks22
-\row@=\count292
-\column@=\count293
-\maxfields@=\count294
+\row@=\count288
+\column@=\count289
+\maxfields@=\count290
 \andhelp@=\toks23
 \eqnshift@=\dimen169
 \alignsep@=\dimen170
@@ -191,17 +193,17 @@ LaTeX Info: Redefining \[ on input line 2953.
 LaTeX Info: Redefining \] on input line 2954.
 )
 (/usr/local/texlive/2025/texmf-dist/tex/latex/listings/listings.sty
-\lst@mode=\count295
+\lst@mode=\count291
 \lst@gtempboxa=\box54
 \lst@token=\toks26
-\lst@length=\count296
+\lst@length=\count292
 \lst@currlwidth=\dimen175
-\lst@column=\count297
-\lst@pos=\count298
+\lst@column=\count293
+\lst@pos=\count294
 \lst@lostspace=\dimen176
 \lst@width=\dimen177
-\lst@newlines=\count299
-\lst@lineno=\count300
+\lst@newlines=\count295
+\lst@lineno=\count296
 \lst@maxwidth=\dimen178
 
 (/usr/local/texlive/2025/texmf-dist/tex/latex/listings/lstpatch.sty
@@ -209,8 +211,8 @@ File: lstpatch.sty 2024/09/23 1.10c (Carsten Heinz)
 )
 (/usr/local/texlive/2025/texmf-dist/tex/latex/listings/lstmisc.sty
 File: lstmisc.sty 2024/09/23 1.10c (Carsten Heinz)
-\c@lstnumber=\count301
-\lst@skipnumbers=\count302
+\c@lstnumber=\count297
+\lst@skipnumbers=\count298
 \lst@framebox=\box55
 )
 (/usr/local/texlive/2025/texmf-dist/tex/latex/listings/listings.cfg
@@ -278,15 +280,19 @@ Package: gettitlestring 2019/12/15 v1.6 Cleanup title references (HO)
  (/usr/local/texlive/2025/texmf-dist/tex/latex/kvoptions/kvoptions.sty
 Package: kvoptions 2022-06-15 v3.15 Key value format for package options (HO)
 ))
-\c@section@level=\count303
+\c@section@level=\count299
+)
+(/usr/local/texlive/2025/texmf-dist/tex/latex/etoolbox/etoolbox.sty
+Package: etoolbox 2025/02/11 v2.5l e-TeX tools for LaTeX (JAW)
+\etb@tempcnta=\count300
 )
 (/usr/local/texlive/2025/texmf-dist/tex/generic/stringenc/stringenc.sty
 Package: stringenc 2019/11/29 v1.12 Convert strings between diff. encodings (HO
 )
 )
 \@linkdim=\dimen179
-\Hy@linkcounter=\count304
-\Hy@pagecounter=\count305
+\Hy@linkcounter=\count301
+\Hy@pagecounter=\count302
 
 (/usr/local/texlive/2025/texmf-dist/tex/latex/hyperref/pd1enc.def
 File: pd1enc.def 2024-11-05 v7.01l Hyperref: PDFDocEncoding definition (HO)
@@ -296,7 +302,7 @@ Now handling font encoding PD1 ...
 (/usr/local/texlive/2025/texmf-dist/tex/generic/intcalc/intcalc.sty
 Package: intcalc 2019/12/15 v1.3 Expandable calculations with integers (HO)
 )
-\Hy@SavedSpaceFactor=\count306
+\Hy@SavedSpaceFactor=\count303
 
 (/usr/local/texlive/2025/texmf-dist/tex/latex/hyperref/puenc.def
 File: puenc.def 2024-11-05 v7.01l Hyperref: PDF Unicode definition (HO)
@@ -310,7 +316,7 @@ Package hyperref Info: Plain pages OFF on input line 4172.
 Package hyperref Info: Backreferencing OFF on input line 4177.
 Package hyperref Info: Implicit mode ON; LaTeX internals redefined.
 Package hyperref Info: Bookmarks ON on input line 4424.
-\c@Hy@tempcnt=\count307
+\c@Hy@tempcnt=\count304
 
 (/usr/local/texlive/2025/texmf-dist/tex/latex/url/url.sty
 \Urlmuskip=\muskip18
@@ -326,7 +332,7 @@ Package: bitset 2019/12/09 v1.3 Handle bit-vector datatype (HO)
 Package: bigintcalc 2019/12/15 v1.5 Expandable calculations on big integers (HO
 )
 ))
-\Fld@menulength=\count308
+\Fld@menulength=\count305
 \Field@Width=\dimen181
 \Fld@charsize=\dimen182
 Package hyperref Info: Hyper figures OFF on input line 6042.
@@ -341,9 +347,9 @@ Package hyperref Info: PDF/A mode OFF on input line 6072.
 Package: atbegshi-ltx 2021/01/10 v1.0c Emulation of the original atbegshi
 package with kernel methods
 )
-\Hy@abspage=\count309
-\c@Item=\count310
-\c@Hfootnote=\count311
+\Hy@abspage=\count306
+\c@Item=\count307
+\c@Hfootnote=\count308
 )
 Package hyperref Info: Driver (autodetected): hpdftex.
 
@@ -355,8 +361,8 @@ Package: atveryend-ltx 2020/08/19 v1.0a Emulation of the original atveryend pac
 kage
 with kernel methods
 )
-\Fld@listcount=\count312
-\c@bookmark@seq@number=\count313
+\Fld@listcount=\count309
+\c@bookmark@seq@number=\count310
 
 (/usr/local/texlive/2025/texmf-dist/tex/latex/rerunfilecheck/rerunfilecheck.sty
 Package: rerunfilecheck 2022-07-10 v1.10 Rerun checks for auxiliary files (HO)
@@ -374,8 +380,8 @@ Package: enumitem 2025/02/06 v3.11 Customized lists
 \enit@outerparindent=\dimen183
 \enit@toks=\toks27
 \enit@inbox=\box56
-\enit@count@id=\count314
-\enitdp@description=\count315
+\enit@count@id=\count311
+\enitdp@description=\count312
 )
 (/usr/local/texlive/2025/texmf-dist/tex/latex/caption/caption.sty
 Package: caption 2023/08/05 v3.6o Customizing captions (AR)
@@ -392,39 +398,61 @@ Package: caption3 2023/07/31 v2.4d caption3 kernel (AR)
 \caption@hangindent=\dimen191
 Package caption Info: Standard document class detected.
 )
-\c@caption@flags=\count316
-\c@continuedfloat=\count317
+\c@caption@flags=\count313
+\c@continuedfloat=\count314
 Package caption Info: hyperref package is loaded.
 Package caption Info: listings package is loaded.
+)
+(/usr/local/texlive/2025/texmf-dist/tex/latex/caption/subcaption.sty
+Package: subcaption 2023/07/28 v1.6b Sub-captions (AR)
+Package caption Info: New subtype `subfigure' on input line 238.
+\c@subfigure=\count315
+Package caption Info: New subtype `subtable' on input line 238.
+\c@subtable=\count316
+)
+(/usr/local/texlive/2025/texmf-dist/tex/latex/colortbl/colortbl.sty
+Package: colortbl 2024/07/06 v1.0i Color table columns (DPC)
+
+(/usr/local/texlive/2025/texmf-dist/tex/latex/tools/array.sty
+Package: array 2024/10/17 v2.6g Tabular extension package (FMi)
+\col@sep=\dimen192
+\ar@mcellbox=\box57
+\extrarowheight=\dimen193
+\NC@list=\toks28
+\extratabsurround=\skip56
+\backup@length=\skip57
+\ar@cellbox=\box58
+)
+\everycr=\toks29
+\minrowclearance=\skip58
+\rownum=\count317
 )
 (/usr/local/texlive/2025/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def
 File: l3backend-pdftex.def 2024-05-08 L3 backend support: PDF output (pdfTeX)
 \l__color_backend_stack_int=\count318
-\l__pdf_internal_box=\box57
+\l__pdf_internal_box=\box59
 )
-(./report_ITA.aux)
-\openout1 = `report_ITA.aux'.
+(./report.aux)
+\openout1 = `report.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 34.
-LaTeX Font Info:    ... okay on input line 34.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 34.
-LaTeX Font Info:    ... okay on input line 34.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 34.
-LaTeX Font Info:    ... okay on input line 34.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 34.
-LaTeX Font Info:    ... okay on input line 34.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 34.
-LaTeX Font Info:    ... okay on input line 34.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 34.
-LaTeX Font Info:    ... okay on input line 34.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 34.
-LaTeX Font Info:    ... okay on input line 34.
-LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 34.
-LaTeX Font Info:    ... okay on input line 34.
-LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 34.
-LaTeX Font Info:    ... okay on input line 34.
-LaTeX Info: Redefining \it@ocap on input line 34.
-LaTeX Info: Redefining \it@ccap on input line 34.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
 
 *geometry* driver: auto-detecting
 *geometry* detected driver: pdftex
@@ -463,16 +491,16 @@ LaTeX Info: Redefining \it@ccap on input line 34.
 (/usr/local/texlive/2025/texmf-dist/tex/context/base/mkii/supp-pdf.mkii
 [Loading MPS to PDF converter (version 2006.09.02).]
 \scratchcounter=\count319
-\scratchdimen=\dimen192
-\scratchbox=\box58
+\scratchdimen=\dimen194
+\scratchbox=\box60
 \nofMPsegments=\count320
 \nofMParguments=\count321
-\everyMPshowfont=\toks28
+\everyMPshowfont=\toks30
 \MPscratchCnt=\count322
-\MPscratchDim=\dimen193
+\MPscratchDim=\dimen195
 \MPnumerator=\count323
 \makeMPintoPDFobject=\count324
-\everyMPtoPDFconversion=\toks29
+\everyMPtoPDFconversion=\toks31
 ) (/usr/local/texlive/2025/texmf-dist/tex/latex/epstopdf-pkg/epstopdf-base.sty
 Package: epstopdf-base 2020-01-24 v2.11 Base part for package epstopdf
 Package epstopdf-base Info: Redefining graphics rule for `.eps' on input line 4
@@ -483,54 +511,28 @@ File: epstopdf-sys.cfg 2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Liv
 e
 ))
 \c@lstlisting=\count325
-Package hyperref Info: Link coloring OFF on input line 34.
+Package hyperref Info: Link coloring OFF on input line 36.
 
-(./report_ITA.out) (./report_ITA.out)
+(./report.out) (./report.out)
 \@outlinefile=\write3
-\openout3 = `report_ITA.out'.
+\openout3 = `report.out'.
 
 Package caption Info: Begin \AtBeginDocument code.
 Package caption Info: End \AtBeginDocument code.
 
-Underfull \hbox (badness 5475) in paragraph at lines 63--64
-\T1/cmr/m/n/10 Il ker-nel C++ ``plain'' vie-ne com-pi-la-to da un
+
+(/usr/local/texlive/2025/texmf-dist/tex/latex/listings/lstlang1.sty
+File: lstlang1.sty 2024/09/23 1.10c listings language file
+)
+(/usr/local/texlive/2025/texmf-dist/tex/latex/listings/lstlang1.sty
+File: lstlang1.sty 2024/09/23 1.10c listings language file
+)
+(/usr/local/texlive/2025/texmf-dist/tex/latex/listings/lstmisc.sty
+File: lstmisc.sty 2024/09/23 1.10c (Carsten Heinz)
+)
+Underfull \hbox (badness 3503) in paragraph at lines 100--101
+[]\T1/cmr/m/n/10 For the Fi-bonacci par-ti-tion-ing hash, par-ti-tion
  []
-
-
-Underfull \hbox (badness 6094) in paragraph at lines 63--64
-\T1/cmr/m/n/10 sin-go-lo fi-le sor-gen-te in due bi-na-ri: uno con
- []
-
-
-Underfull \hbox (badness 3895) in paragraph at lines 63--64
-\T1/cmtt/m/n/10 -fno-tree-vectorize \T1/cmr/m/n/10 (ba-se-li-ne), l'al-tro con 
-\T1/cmtt/m/n/10 -O3
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 63--64
-\T1/cmtt/m/n/10 -march=native -mavx2 -ftree-vectorize \T1/cmr/m/n/10 (au-to-
- []
-
-
-
-
-Underfull \hbox (badness 2922) in paragraph at lines 88--89
-[]\T1/cmr/m/n/10 Il bi-na-rio AVX2 ve-ri-fi-ca la cor-ret-tez-za ri-spet-
- []
-
-
-Underfull \hbox (badness 1728) in paragraph at lines 95--96
-\T1/cmr/m/n/10 Tutti i ben-ch-mark so-no sta-ti ese-gui-ti su no-de09
- []
-
-
-Underfull \hbox (badness 1609) in paragraph at lines 95--96
-\T1/cmr/m/n/10 (AMD EPYC 7301, Zen 1, DDR4-2666) con al-
- []
-
-
-Underfull \vbox (badness 4303) has occurred while \output is active []
 
 
 
@@ -539,91 +541,133 @@ ocal/texlive/2025/texmf-dist/fonts/enc/dvips/cm-super/cm-super-t1.enc}
 
 
 ]
-<../results/plots/14_roofline.png, id=95, 632.1216pt x 455.301pt>
-File: ../results/plots/14_roofline.png Graphic file (type png)
-<use ../results/plots/14_roofline.png>
-Package pdftex.def Info: ../results/plots/14_roofline.png  used on input line 1
-31.
-(pdftex.def)             Requested size: 239.00298pt x 172.14775pt.
+<../results/plots/strong_speedup.pdf, id=63, 613.69278pt x 398.43481pt>
+File: ../results/plots/strong_speedup.pdf Graphic file (type pdf)
+<use ../results/plots/strong_speedup.pdf>
+Package pdftex.def Info: ../results/plots/strong_speedup.pdf  used on input lin
+e 169.
+(pdftex.def)             Requested size: 242.59084pt x 157.49858pt.
+<../results/plots/strong_efficiency.pdf, id=64, 630.2076pt x 398.43481pt>
+File: ../results/plots/strong_efficiency.pdf Graphic file (type pdf)
+<use ../results/plots/strong_efficiency.pdf>
+Package pdftex.def Info: ../results/plots/strong_efficiency.pdf  used on input 
+line 175.
+(pdftex.def)             Requested size: 242.59084pt x 153.37051pt.
 
 
-<../results/plots/18_psweep_keyspace_combined.png, id=100, 714.5094pt x 267.880
-8pt>
-File: ../results/plots/18_psweep_keyspace_combined.png Graphic file (type png)
-<use ../results/plots/18_psweep_keyspace_combined.png>
-Package pdftex.def Info: ../results/plots/18_psweep_keyspace_combined.png  used
- on input line 150.
-(pdftex.def)             Requested size: 239.00298pt x 89.60675pt.
-<../results/plots/03_speedup_vs_N.png, id=101, 614.7768pt x 399.4122pt>
-File: ../results/plots/03_speedup_vs_N.png Graphic file (type png)
-<use ../results/plots/03_speedup_vs_N.png>
-Package pdftex.def Info: ../results/plots/03_speedup_vs_N.png  used on input li
-ne 157.
-(pdftex.def)             Requested size: 239.00298pt x 155.27647pt.
+<../results/plots/weak_scaling.pdf, id=65, 999.59636pt x 388.10118pt>
+File: ../results/plots/weak_scaling.pdf Graphic file (type pdf)
+<use ../results/plots/weak_scaling.pdf>
+Package pdftex.def Info: ../results/plots/weak_scaling.pdf  used on input line 
+209.
+(pdftex.def)             Requested size: 420.81914pt x 163.3863pt.
+<../results/plots/phase_speedup.pdf, id=68, 611.30887pt x 398.43481pt>
+File: ../results/plots/phase_speedup.pdf Graphic file (type pdf)
+<use ../results/plots/phase_speedup.pdf>
+Package pdftex.def Info: ../results/plots/phase_speedup.pdf  used on input line
+ 234.
+(pdftex.def)             Requested size: 239.00298pt x 155.77805pt.
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+<../results/plots/amdahl_fit.pdf, id=69, 611.30887pt x 398.43481pt>
+File: ../results/plots/amdahl_fit.pdf Graphic file (type pdf)
+<use ../results/plots/amdahl_fit.pdf>
+Package pdftex.def Info: ../results/plots/amdahl_fit.pdf  used on input line 25
+5.
+(pdftex.def)             Requested size: 239.00298pt x 155.77805pt.
+
+LaTeX Warning: `h' float specifier changed to `ht'.
 
 
-[2 <../results/plots/14_roofline.png> <../results/plots/18_psweep_keyspace_comb
-ined.png> <../results/plots/03_speedup_vs_N.png>]
-Overfull \hbox (13.30974pt too wide) in paragraph at lines 175--186
- [][] 
+
+[2]
+
+
+Underfull \vbox (badness 1297) has occurred while \output is active []
+
+
+
+[3 <../results/plots/strong_speedup.pdf> <../results/plots/strong_efficiency.pd
+f> <../results/plots/weak_scaling.pdf> <../results/plots/phase_speedup.pdf> <..
+/results/plots/amdahl_fit.pdf>]
+Underfull \hbox (badness 1694) in paragraph at lines 271--273
+\T1/cmr/m/n/10 The con-tin-u-ing im-prove-ment through HT threads
  []
 
+<../results/plots/partition_sensitivity.pdf, id=476, 618.33511pt x 398.43481pt>
 
-Underfull \hbox (badness 1424) in paragraph at lines 203--204
-[]\T1/cmr/m/n/10 P. Fer-ra-gi-na, \T1/cmr/m/it/10 Pearls of Al-go-ri-thm En-gi-
-nee-ring\T1/cmr/m/n/10 .
- []
+File: ../results/plots/partition_sensitivity.pdf Graphic file (type pdf)
+<use ../results/plots/partition_sensitivity.pdf>
+Package pdftex.def Info: ../results/plots/partition_sensitivity.pdf  used on in
+put line 283.
+(pdftex.def)             Requested size: 239.00298pt x 154.00279pt.
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+<../results/plots/duplicate_density.pdf, id=477, 1003.03229pt x 386.05855pt>
+File: ../results/plots/duplicate_density.pdf Graphic file (type pdf)
+<use ../results/plots/duplicate_density.pdf>
+Package pdftex.def Info: ../results/plots/duplicate_density.pdf  used on input 
+line 294.
+(pdftex.def)             Requested size: 239.00298pt x 91.99028pt.
+
+LaTeX Warning: `h' float specifier changed to `ht'.
 
 
 
 
 
-[3
-
-] (./report_ITA.aux)
+[4 <../results/plots/partition_sensitivity.pdf> <../results/plots/duplicate_den
+sity.pdf>] (./report.aux)
  ***********
 LaTeX2e <2024-11-01> patch level 2
 L3 programming layer <2025-01-18>
  ***********
-Package rerunfilecheck Info: File `report_ITA.out' has not changed.
-(rerunfilecheck)             Checksum: 41E3AD487E381C8B463A3E3739B5ECC7;1913.
+Package rerunfilecheck Info: File `report.out' has not changed.
+(rerunfilecheck)             Checksum: 074DF44CB34CF760623B25869973BCC2;566.
  ) 
 Here is how much of TeX's memory you used:
- 14875 strings out of 473190
- 233414 string characters out of 5715800
- 756521 words of memory out of 5000000
- 37928 multiletter control sequences out of 15000+600000
- 575391 words of font info for 71 fonts, out of 8000000 for 9000
+ 15340 strings out of 473190
+ 241682 string characters out of 5715800
+ 1040428 words of memory out of 5000000
+ 38358 multiletter control sequences out of 15000+600000
+ 577011 words of font info for 73 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 75i,11n,79p,862b,1076s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 75i,11n,79p,1097b,1302s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb
 ></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb>
 </usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></
-usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9.pfb></us
-r/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/
-local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb></usr/loc
-al/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/local/
-texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/local/tex
-live/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texl
-ive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/local/texliv
-e/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.pfb></usr/local/texlive/
-2025/texmf-dist/fonts/type1/public/cm-super/sfbx0900.pfb></usr/local/texlive/20
-25/texmf-dist/fonts/type1/public/cm-super/sfbx1000.pfb></usr/local/texlive/2025
-/texmf-dist/fonts/type1/public/cm-super/sfbx1200.pfb></usr/local/texlive/2025/t
-exmf-dist/fonts/type1/public/cm-super/sfbx1440.pfb></usr/local/texlive/2025/tex
-mf-dist/fonts/type1/public/cm-super/sfbx1728.pfb></usr/local/texlive/2025/texmf
--dist/fonts/type1/public/cm-super/sfrm0700.pfb></usr/local/texlive/2025/texmf-d
-ist/fonts/type1/public/cm-super/sfrm0900.pfb></usr/local/texlive/2025/texmf-dis
-t/fonts/type1/public/cm-super/sfrm1000.pfb></usr/local/texlive/2025/texmf-dist/
-fonts/type1/public/cm-super/sfrm1200.pfb></usr/local/texlive/2025/texmf-dist/fo
-nts/type1/public/cm-super/sfti0900.pfb></usr/local/texlive/2025/texmf-dist/font
-s/type1/public/cm-super/sfti1000.pfb></usr/local/texlive/2025/texmf-dist/fonts/
-type1/public/cm-super/sftt0800.pfb></usr/local/texlive/2025/texmf-dist/fonts/ty
-pe1/public/cm-super/sftt1000.pfb>
-Output written on report_ITA.pdf (3 pages, 608740 bytes).
+usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb></us
+r/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9.pfb></usr/
+local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/lo
+cal/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/local
+/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/local/te
+xlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/local/texli
+ve/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texliv
+e/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy6.pfb></usr/local/texlive/
+2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/local/texlive/20
+25/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/local/texlive/2025
+/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.pfb></usr/local/texlive/2025/t
+exmf-dist/fonts/type1/public/cm-super/sfbx0800.pfb></usr/local/texlive/2025/tex
+mf-dist/fonts/type1/public/cm-super/sfbx0900.pfb></usr/local/texlive/2025/texmf
+-dist/fonts/type1/public/cm-super/sfbx1000.pfb></usr/local/texlive/2025/texmf-d
+ist/fonts/type1/public/cm-super/sfbx1200.pfb></usr/local/texlive/2025/texmf-dis
+t/fonts/type1/public/cm-super/sfbx1440.pfb></usr/local/texlive/2025/texmf-dist/
+fonts/type1/public/cm-super/sfbx1728.pfb></usr/local/texlive/2025/texmf-dist/fo
+nts/type1/public/cm-super/sfrm0600.pfb></usr/local/texlive/2025/texmf-dist/font
+s/type1/public/cm-super/sfrm0800.pfb></usr/local/texlive/2025/texmf-dist/fonts/
+type1/public/cm-super/sfrm0900.pfb></usr/local/texlive/2025/texmf-dist/fonts/ty
+pe1/public/cm-super/sfrm1000.pfb></usr/local/texlive/2025/texmf-dist/fonts/type
+1/public/cm-super/sfrm1200.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/
+public/cm-super/sfti1000.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/pu
+blic/cm-super/sftt0800.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/publ
+ic/cm-super/sftt0900.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public
+/cm-super/sftt1000.pfb>
+Output written on report.pdf (4 pages, 621443 bytes).
 PDF statistics:
- 235 PDF objects out of 1000 (max. 8388607)
- 174 compressed objects within 2 object streams
- 34 named destinations out of 1000 (max. 500000)
- 120 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 753 PDF objects out of 1000 (max. 8388607)
+ 263 compressed objects within 3 object streams
+ 49 named destinations out of 1000 (max. 500000)
+ 68 words of extra memory for PDF output out of 10000 (max. 10000000)
 

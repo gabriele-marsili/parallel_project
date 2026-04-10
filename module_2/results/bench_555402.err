@@ -1,0 +1,27 @@
+/var/spool/slurmd/job555402/slurm_script: line 39: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 39: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 39: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 39: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555402/slurm_script: line 48: bc: command not found
+slurmstepd-node01: error: *** JOB 555402 ON node01 CANCELLED AT 2026-04-10T13:20:35 DUE TO TIME LIMIT ***

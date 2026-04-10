@@ -11,14 +11,15 @@ module_1/
 │   ├── plain.cpp             # Plain C++ (compiled as baseline + autovec)
 │   ├── avx2.cpp              # AVX2 intrinsics version
 │   ├── cuda_kernel.cu        # CUDA version (optional)
-│   └── dataset_creator.cpp   # Binary dataset generator
+│   └── dataset_creator.cpp   # Binary dataset generator (for future modules)
 ├── scripts/
 │   ├── run_bench.sh          # SLURM script for CPU benchmarks
 │   └── run_cuda.sh           # SLURM script for CUDA benchmarks
 ├── analysis/                 # Python scripts for parsing results and plotting
-├── results/                  # Benchmark output, CSV, vectorization reports
+├── results/                  # Benchmark output, CSV, correctness tests, vectorization reports
 │   └── plots/                # Generated figures
-└── report/                   # PDF report (LaTeX source)
+└── report/
+    └── report.pdf            # PDF report
 ```
 
 ## Build
@@ -67,6 +68,8 @@ make clean
 make test_correctness   # runs all implementations with N=16, P=4
 ```
 
+The output of this test (run on node09) is saved in `results/correctness_test.txt`.
+
 ## Benchmarks
 
 ```bash
@@ -75,17 +78,26 @@ sbatch scripts/run_bench.sh
 
 # CUDA
 sbatch scripts/run_cuda.sh
+```
 
-# Parse results and generate plots
-python3 analysis/parse_results.py
-python3 analysis/plot_results.py
+Results are saved in `results/bench_cpu.txt` and `results/bench_cuda.txt`.
+
+## Generating Plots
+
+Pre-generated plots are included in `results/plots/`. To regenerate them from the raw benchmark output (requires `pandas` and `matplotlib`):
+
+```bash
+python3 analysis/parse_results.py          # bench_*.txt -> CSV
+python3 analysis/plot_results.py           # CSV -> results/plots/*.png
+python3 analysis/plot_speedup_vs_baseline.py  # speedup plot
 ```
 
 ## Vectorization Report
 
-After building `autovec`, GCC reports are saved to:
+After building `autovec`, GCC saves the optimization report to:
 - `results/vec_report_optimized.txt` — successfully vectorized loops
-- `results/vec_report_missed.txt` — missed opportunities (empty = none missed)
+
+The `-fopt-info-vec-missed` flag was also used: GCC found no loop that it attempted but failed to vectorize (no missed opportunities).
 
 ## Dataset Creator
 

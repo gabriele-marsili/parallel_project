@@ -312,7 +312,7 @@ def plot_keyspace_sensitivity(df, outdir, fmt):
     fig, ax = plt.subplots()
     for impl in IMPL_ORDER:
         sub = sweep[sweep['impl'] == impl].sort_values('key_space')
-        if sub.empty:
+        if len(sub) < 2:
             continue
         x_pos = [ks_to_x[ks] for ks in sub['key_space']]
         s = get_style(impl)
@@ -581,18 +581,18 @@ def plot_cuda_vs_cpu(cpu_df, cuda_df, outdir, fmt):
 
 
 # ============================================================================
-# Metriche L10: Speedup, Efficiency, Costo, Amdahl (applicate a SIMD)
+# Metriche SIMD: Speedup, Efficiency, Costo, Amdahl
 # ============================================================================
 
 def plot_simd_metrics(df, outdir, fmt):
-    """15: Metriche della lezione 10 applicate al parallelismo SIMD.
+    """15: Metriche del parallelismo SIMD.
     
     Nel contesto SIMD, il "numero di processori" p corrisponde alla
     larghezza del vettore:
       p=1 → scalare (baseline)
       p=8 → AVX2 256-bit su uint32 (autovec e intrinsics)
     
-    Metriche calcolate (L10 slide 5-6):
+    Metriche calcolate:
       Speedup S(p) = T_seq / T_par(p)
       Efficiency E(p) = S(p) / p
       Cost C(p) = T_par(p) × p
@@ -636,7 +636,7 @@ def plot_simd_metrics(df, outdir, fmt):
     mdf = pd.DataFrame(rows)
     
     fig, axes = plt.subplots(2, 2, figsize=(12, 9))
-    fig.suptitle(f'Metriche SIMD (L10) — p=8 lane AVX2 (P={main_P})',
+    fig.suptitle(f'Metriche SIMD — p=8 lane AVX2 (P={main_P})',
                  fontsize=14, fontweight='bold')
     
     colors = {'Auto-vec (p=8)': '#2E7D32', 'AVX2 (p=8)': '#E65100'}
@@ -659,7 +659,7 @@ def plot_simd_metrics(df, outdir, fmt):
                label=f'Amdahl (f={f_est:.1%}): S={s_amdahl:.2f}')
     ax.set_xlabel('N')
     ax.set_ylabel('Speedup S(p)')
-    ax.set_title('Speedup SIMD (L10 slide 5)')
+    ax.set_title('Speedup SIMD')
     ax.set_xscale('log')
     ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: format_N(int(x))))
     ax.legend(fontsize=8)
@@ -675,7 +675,7 @@ def plot_simd_metrics(df, outdir, fmt):
                label=f'1/p = {100.0/p_simd:.1f}%')
     ax.set_xlabel('N')
     ax.set_ylabel('Efficienza E(p) %')
-    ax.set_title('Efficienza SIMD (L10 slide 6)')
+    ax.set_title('Efficienza SIMD')
     ax.set_xscale('log')
     ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: format_N(int(x))))
     ax.set_ylim(0, 105)
@@ -693,7 +693,7 @@ def plot_simd_metrics(df, outdir, fmt):
                 color=colors[impl], label=f'C(p)={impl}', linestyle='--')
     ax.set_xlabel('N')
     ax.set_ylabel('Costo (ms)')
-    ax.set_title(f'Costo C(p) = T_par × p  (L10 slide 6)')
+    ax.set_title(f'Costo C(p) = T_par × p')
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: format_N(int(x))))
@@ -714,17 +714,17 @@ def plot_simd_metrics(df, outdir, fmt):
     ax.plot(p_range, p_range, color='red', linestyle=':', alpha=0.5, label='Lineare S=p')
     ax.set_xlabel('p (SIMD width / lane)')
     ax.set_ylabel('Speedup S(p)')
-    ax.set_title(f"Amdahl's Law (L10 slide 25-28)\nN={format_N(int(mdf['N'].max()))}")
+    ax.set_title(f"Amdahl's Law\nN={format_N(int(mdf['N'].max()))}")
     ax.legend(fontsize=8)
     ax.set_xlim(0.5, 16.5)
     ax.set_ylim(0, 9)
     
     fig.tight_layout(rect=[0, 0, 1, 0.95])
-    save_fig(fig, outdir, '15_simd_metrics_L10', fmt)
+    save_fig(fig, outdir, '15_simd_metrics', fmt)
 
 
 # ============================================================================
-# Grafico Roofline (slide L5&6, 47-51)
+# Grafico Roofline
 # ============================================================================
 
 def plot_roofline(df, outdir, fmt):

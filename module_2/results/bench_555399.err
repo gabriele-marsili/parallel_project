@@ -1,0 +1,6 @@
+/var/spool/slurmd/job555399/slurm_script: line 39: bc: command not found
+/var/spool/slurmd/job555399/slurm_script: line 39: bc: command not found
+/var/spool/slurmd/job555399/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555399/slurm_script: line 48: bc: command not found
+/var/spool/slurmd/job555399/slurm_script: line 48: bc: command not found
+slurmstepd-node01: error: *** JOB 555399 ON node01 CANCELLED AT 2026-04-10T12:48:22 ***

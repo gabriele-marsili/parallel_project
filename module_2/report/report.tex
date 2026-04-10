@@ -173,7 +173,7 @@ seq & 1.00 & 100\% & & 1.00 & 100\% \\
   \hfill
   \begin{subfigure}[b]{0.49\textwidth}
     \includegraphics[width=\linewidth]{../results/plots/strong_efficiency.pdf}
-    \caption{Efficiency $E(p) = S(p)/p$, declining from 69\% at $p=2$ to 16\% at $p=32$. Shaded rows: HT threads ($p > 16$).}
+    \caption{Efficiency $E(p) = S(p)/p$, declining from 72\% at $p=2$ to 26\% at $p=32$. Shaded rows: HT threads ($p > 16$).}
     \label{fig:strong_eff}
   \end{subfigure}
   \caption{Strong scaling — both problem sizes (NR=10M and NR=20M) follow nearly identical profiles.}
@@ -181,7 +181,7 @@ seq & 1.00 & 100\% & & 1.00 & 100\% \\
 
 \subsection*{Weak Scaling}
 
-Each thread processes 1M records of $R$ (and 2M of $S$). WSE $= T(1)/T(p)$; ideal is 1.0. The $p=1$ parallel baseline ($\approx 86$\,ms) matches the sequential binary ($\approx 83$\,ms) — no overhead artifact with the current implementation.
+Each thread processes 1M records of $R$ (and 2M of $S$). WSE $= T(1)/T(p)$; ideal is 1.0. The $p=1$ parallel baseline ($\approx 78$\,ms on NR=1M) incurs negligible overhead from the barrier infrastructure.
 
 \begin{center}
 \small
@@ -189,17 +189,17 @@ Each thread processes 1M records of $R$ (and 2M of $S$). WSE $= T(1)/T(p)$; idea
 \toprule
 $p$ & NR & $T$ (ms) & WSE \\
 \midrule
-1  & 1M  &  86 & 1.00 \\
-2  & 2M  & 122 & 0.70 \\
-4  & 4M  & 142 & 0.61 \\
-8  & 8M  & 186 & 0.46 \\
-10 & 10M & 214 & 0.40 \\
-14 & 14M & 252 & 0.34 \\
-20 & 20M & 339 & 0.25 \\
+1  & 1M  &  78 & 1.00 \\
+2  & 2M  & 106 & 0.74 \\
+4  & 4M  & 112 & 0.70 \\
+8  & 8M  & 131 & 0.60 \\
+10 & 10M & 145 & 0.54 \\
+14 & 14M & 155 & 0.51 \\
+20 & 20M & 206 & 0.38 \\
 \rowcolor{gray!15}
-24 & 24M & 373 & 0.23 \\
+24 & 24M & 209 & 0.37 \\
 \rowcolor{gray!15}
-32 & 32M & 451 & 0.19 \\
+32 & 32M & 238 & 0.33 \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -219,11 +219,11 @@ $p$ & NR & $T$ (ms) & WSE \\
 \toprule
 Phase & $T_\text{seq}$ & $S(20)$ & $S(24)$ & $S(32)$ \\
 \midrule
-Histogram R+S &  51\,ms &  2.4$\times$ &  3.0$\times$ &  2.8$\times$ \\
-Scatter R+S   & 485\,ms & 11.3$\times$ & 13.4$\times$ & 16.2$\times$ \\
-Join Local    & 309\,ms &  6.7$\times$ &  7.3$\times$ &  7.5$\times$ \\
+Histogram R+S &  51\,ms &  2.4$\times$ &  3.2$\times$ &  2.7$\times$ \\
+Scatter R+S   & 410\,ms &  9.7$\times$ & 11.3$\times$ & 13.7$\times$ \\
+Join Local    & 300\,ms &  6.9$\times$ &  8.5$\times$ &  7.8$\times$ \\
 \midrule
-End-to-end    & 832\,ms &  4.7$\times$ &  5.2$\times$ &  5.2$\times$ \\
+End-to-end    & 782\,ms &  7.1$\times$ &  8.0$\times$ &  8.3$\times$ \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -243,36 +243,57 @@ End-to-end    & 832\,ms &  4.7$\times$ &  5.2$\times$ &  5.2$\times$ \\
 
 \subsection*{Strong Scaling and Amdahl's Law}
 
-Fitting Amdahl's law $S(p) = 1/(f + (1{-}f)/p)$ to the full dataset (including $p=24,32$) yields $f \approx 0.158$, giving $S_\infty = 1/f \approx 6.3\times$. The measured peak is $5.2\times$ (NR=10M, $p=32$) and $5.7\times$ (NR=20M, $p=32$). The gap between the fit and the measured peak is explained by memory-bandwidth saturation: as threads increase, DRAM bandwidth is the binding constraint rather than the serial fraction.
+Fitting Amdahl's law $S(p) = 1/(f + (1{-}f)/p)$ to the full dataset (including $p=24,32$) yields $f \approx 0.083$, giving $S_\infty = 1/f \approx 12.1\times$. The measured peak is $8.29\times$ (NR=10M, $p=32$) and $9.27\times$ (NR=20M, $p=32$). The gap between the Amdahl prediction and the measured peak is explained by memory-bandwidth saturation: as threads increase, DRAM bandwidth is the binding constraint rather than the serial fraction.
 
-The efficiency drops from 69\% at $p=2$ to 16\% at $p=32$. Beyond $p=14$ physical cores the end-to-end time improves by less than 15\% for each doubling of threads, making $p=14$--$20$ the practical sweet spot on this hardware.
+The efficiency drops from 72\% at $p=2$ to 26\% at $p=32$ (NR=10M). Beyond $p=14$ physical cores the end-to-end time improves by less than 15\% per doubling of threads, making $p=14$--$20$ the practical sweet spot on this hardware.
 
 \textbf{Hyper-Threading regime ($p = 20$--$32$).}
-The phase breakdown reveals a counter-intuitive split at $p > 16$: scatter continues to improve (R+S combined: $11.3\times \to 16.2\times$ from $p=20$ to $p=32$) while join peaks at $p=14$ ($8.5\times$) then regresses to $6.7\times$ at $p=20$ before recovering slightly to $7.5\times$ at $p=32$. Scatter is memory-bandwidth-bound --- HT threads increase memory-level parallelism, so additional logical cores help. Join Local (hash-table lookups with \texttt{FlatCountMap}) is compute-bound: HT pairs share execution ports on the same physical core, so competing hash-lookup streams contend for ALU and L1/L2 resources rather than adding capacity. The net result is a modest end-to-end gain ($4.7\times \to 5.2\times$) despite the scatter improvement.
+The phase breakdown reveals a counter-intuitive split at $p > 16$: scatter continues to improve (R+S combined: $9.7\times \to 13.7\times$ from $p=20$ to $p=32$) while join peaks at $p=14$ ($8.1\times$) then regresses to $6.9\times$ at $p=20$ before recovering to $7.8\times$ at $p=32$. Scatter is memory-bandwidth-bound --- HT threads increase memory-level parallelism, so additional logical cores help. Join Local (hash-table lookups with \texttt{FlatCountMap}) is compute-bound: HT pairs share execution ports on the same physical core, so competing hash-lookup streams contend for ALU and L1/L2 resources rather than adding capacity. The net result is a moderate end-to-end gain ($7.1\times \to 8.3\times$) despite the scatter improvement.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\linewidth]{../results/plots/amdahl_fit.pdf}
+  \caption{Amdahl's law fit (NR=20M). Estimated serial fraction $f \approx 0.083$; theoretical $S_\infty \approx 12.1\times$. The measured peak falls below the prediction due to memory-bandwidth saturation.}
+  \label{fig:amdahl}
+\end{figure}
 
 \subsection*{Weak Scaling and WSE Interpretation}
 
-With \texttt{FlatCountMap}, the $p=1$ parallel binary takes $\approx 86$\,ms on NR=1M, matching the sequential binary ($\approx 83$\,ms, $<4\%$ overhead). There is no artificial baseline inflation. WSE $= T(1)/T(p)$ decreases monotonically: 0.70 at $p=2$, 0.40 at $p=10$, 0.19 at $p=32$.
+The $p=1$ parallel binary takes $\approx 78$\,ms on NR=1M with negligible overhead from the barrier infrastructure. WSE $= T(1)/T(p)$ decreases monotonically: 0.74 at $p=2$, 0.54 at $p=10$, 0.33 at $p=32$.
 
 The primary cause is scatter: as the problem size grows proportionally with thread count, the random-write pattern of scatter generates an increasing volume of DRAM traffic that cannot be absorbed by more cores (bandwidth is shared, not replicated). Histogram and join scale somewhat better because their access patterns benefit from per-thread private structures (thread-local histograms) or fit within the aggregate L3 capacity. The WSE decay accelerates at $p > 16$ due to NUMA penalties: with two sockets, a larger fraction of each thread's working set resides on the remote node.
 
 \subsection*{Phase-Level Analysis}
 
-\textbf{Histogram (2.4--3.0$\times$ at $p=20$--$32$).}
-Arithmetic intensity $I \approx 0.125$\,FLOP/byte places this phase firmly in the memory-bandwidth-limited region of the roofline model. Histograms account for only 6\% of sequential time, so their poor scalability affects the overall bound by $< 5\%$ (Amdahl).
+\textbf{Histogram (2.4--3.2$\times$ at $p=20$--$32$).}
+Arithmetic intensity $I \approx 0.125$\,FLOP/byte places this phase firmly in the memory-bandwidth-limited region of the roofline model. Histograms account for only $\sim$7\% of sequential time, so their poor scalability affects the overall bound by $< 5\%$ (Amdahl).
 
-\textbf{Scatter (11.3--16.2$\times$ at $p=20$--$32$).}
-Scatter now dominates sequential time (57\%). The lock-free pre-computed-offset design eliminates all contention; speedup is limited only by DRAM write bandwidth. The continuing improvement through HT threads (Scatter improving $11\to 16\times$ from $p=20$ to $p=32$) confirms this phase benefits from increased memory-level parallelism.
+\textbf{Scatter (9.7--13.7$\times$ at $p=20$--$32$).}
+Scatter now dominates sequential time (54\%). The lock-free pre-computed-offset design eliminates all contention; speedup is limited only by DRAM write bandwidth. The continuing improvement through HT threads (Scatter improving $9.7\to 13.7\times$ from $p=20$ to $p=32$) confirms this phase benefits from increased memory-level parallelism.
 
-\textbf{Join Local (peaks at $8.5\times$ for $p=14$, $7.5\times$ at $p=32$).}
-With $P=128$ and NR=10M, each partition holds $\approx 78$K records; the \texttt{FlatCountMap} occupies $\approx 2.4$\,MB (slots $\times$ 16\,B), exceeding L2 (256\,KB) but fitting in the shared 20\,MB L3. Cyclic assignment provides near-zero scheduling overhead for the uniform Fibonacci hash. The phase scales near-linearly to $p=14$ (8.5$\times$); at $p>16$ HT threads share execution ports, causing the regression described above.
+\textbf{Join Local (peaks at $8.1\times$ for $p=14$, $7.8\times$ at $p=32$).}
+With $P=128$ and NR=10M, each partition holds $\approx 78$K records; the \texttt{FlatCountMap} occupies $\approx 4$\,MB (next-power-of-two above $2\times 78$K: 262K slots $\times$ 16\,B), well above L2 (256\,KB) but fitting in the shared 20\,MB L3. Cyclic assignment provides near-zero scheduling overhead for the uniform Fibonacci hash. The phase scales near-linearly to $p=14$ (8.1$\times$); at $p>16$ HT threads share execution ports, causing the regression described above.
 
 \subsection*{Partition Count Sensitivity}
 
-With $P$ in $[16, 1024]$ (at $p=20$, NR=10M), execution time ranges from 184\,ms ($P=16$) to 152\,ms ($P=1024$) --- a modest 1.2$\times$ variation. At $P=16$ each partition holds $\approx 625$K records and the \texttt{FlatCountMap} occupies $\approx 20$\,MB, spilling into DRAM. At $P=1024$ each partition holds $\approx 10$K records and the hash table ($\approx 300$\,KB) still exceeds L2 (256\,KB). The L2-fit threshold would require $P\gtrsim 2048$ for NR=10M --- beyond the tested range. The broad plateau confirms that partition count is not a sensitive tuning parameter at this scale.
+With $P \in [16, 4096]$ (at $p=20$, NR=10M), execution time reaches a minimum at $P=512$--$1024$ ($\approx 86$\,ms), with a variation of $< 1.6\times$ across the full range. At $P=16$ each partition holds $\approx 625$K records and the \texttt{FlatCountMap} occupies $\approx 32$\,MB, spilling into DRAM. The optimum at $P=512$ corresponds to $\approx 20$K records/partition, with the hash table ($\approx 1$\,MB) fitting well within the shared 20\,MB L3. Beyond $P=1024$ scatter overhead grows slightly, raising time to 94\,ms at $P=4096$. A non-monotonic bump at $P=32$ (130\,ms, slower than $P=16$) reflects a transient cache-occupancy regime between the DRAM-spill and L3-fit regions. The broad plateau around $P \in [256, 1024]$ confirms that partition count is not a critical tuning parameter.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\linewidth]{../results/plots/partition_sensitivity.pdf}
+  \caption{Partition count sensitivity ($p=20$, NR=10M). Minimum at $P=512$--$1024$; non-monotonic bump at $P=32$ reflects a cache-occupancy transition.}
+  \label{fig:part_sens}
+\end{figure}
 
 \subsection*{Duplicate Density}
 
-Sequential time is essentially constant for \texttt{max\_key} $\leq 1$M ($\approx 780$--$845$\,ms): with few distinct keys the per-partition \texttt{FlatCountMap} has few occupied slots and most probes terminate immediately. At \texttt{max\_key}=10M (near-unique keys) the hash table is fully populated, increasing sequential time by $+28\%$ (845\,ms $\to$ 978\,ms) due to increased L3 pressure during the join phase. The parallel speedup remains stable across all duplicate densities ($\approx 4.6$--$4.9\times$ at $p=20$), confirming that partition independence is unaffected by key distribution.
+Sequential time is essentially constant for \texttt{max\_key} $\leq 1$M ($\approx 700$--$770$\,ms): with few distinct keys the per-partition \texttt{FlatCountMap} has few occupied slots and most probes terminate immediately. At \texttt{max\_key}=10M (near-unique keys) the hash table is fully populated, increasing sequential time by $+31\%$ ($\approx 700$\,ms $\to$ 915\,ms) due to increased L3 pressure during the join phase. The parallel speedup remains stable across all duplicate densities ($\approx 6.4$--$7.5\times$ at $p=20$), confirming that partition independence is unaffected by key distribution.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\linewidth]{../results/plots/duplicate_density.pdf}
+  \caption{Impact of duplicate density ($p=20$, NR=10M). Left: absolute execution time (seq and par). Right: speedup vs.\ \texttt{max\_key}. Both seq and par time grow with \texttt{max\_key} due to hash-table pressure; speedup remains stable ($6.4$--$7.5\times$).}
+  \label{fig:dup}
+\end{figure}
 
 \end{document}

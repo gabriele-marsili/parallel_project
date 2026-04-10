@@ -1,0 +1,5 @@
+Node: node01 | Cores: 32 | CPU: Intel(R) Xeon(R) CPU E5-2640 v2 @ 2.00GHz
+Date: Sun Apr  5 12:59:42 PM CEST 2026
+
+[1/5] Strong scaling...
+  NR=10000000

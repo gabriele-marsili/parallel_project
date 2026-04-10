@@ -1,9 +1,12 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.11.1)  29 MAR 2026 18:26
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.11.1)  10 APR 2026 16:41
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
-**report_ITA.tex
-(./report_ITA.tex
+**/Users/piccoletto/Desktop/Everything/pisa/corsi/magistrale/primo_anno/SPM/pro
+ject_and_midterms/module_2/report/report_ITA.tex
+
+(/Users/piccoletto/Desktop/Everything/pisa/corsi/magistrale/primo_anno/SPM/proj
+ect_and_midterms/module_2/report/report_ITA.tex
 LaTeX2e <2024-11-01> patch level 2
 L3 programming layer <2025-01-18>
 (/usr/local/texlive/2025/texmf-dist/tex/latex/base/article.cls
@@ -397,34 +400,58 @@ Package caption Info: Standard document class detected.
 Package caption Info: hyperref package is loaded.
 Package caption Info: listings package is loaded.
 )
+(/usr/local/texlive/2025/texmf-dist/tex/latex/caption/subcaption.sty
+Package: subcaption 2023/07/28 v1.6b Sub-captions (AR)
+Package caption Info: New subtype `subfigure' on input line 238.
+\c@subfigure=\count318
+Package caption Info: New subtype `subtable' on input line 238.
+\c@subtable=\count319
+)
+(/usr/local/texlive/2025/texmf-dist/tex/latex/colortbl/colortbl.sty
+Package: colortbl 2024/07/06 v1.0i Color table columns (DPC)
+
+(/usr/local/texlive/2025/texmf-dist/tex/latex/tools/array.sty
+Package: array 2024/10/17 v2.6g Tabular extension package (FMi)
+\col@sep=\dimen192
+\ar@mcellbox=\box57
+\extrarowheight=\dimen193
+\NC@list=\toks28
+\extratabsurround=\skip56
+\backup@length=\skip57
+\ar@cellbox=\box58
+)
+\everycr=\toks29
+\minrowclearance=\skip58
+\rownum=\count320
+)
 (/usr/local/texlive/2025/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def
 File: l3backend-pdftex.def 2024-05-08 L3 backend support: PDF output (pdfTeX)
-\l__color_backend_stack_int=\count318
-\l__pdf_internal_box=\box57
+\l__color_backend_stack_int=\count321
+\l__pdf_internal_box=\box59
 )
 (./report_ITA.aux)
 \openout1 = `report_ITA.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 34.
-LaTeX Font Info:    ... okay on input line 34.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 34.
-LaTeX Font Info:    ... okay on input line 34.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 34.
-LaTeX Font Info:    ... okay on input line 34.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 34.
-LaTeX Font Info:    ... okay on input line 34.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 34.
-LaTeX Font Info:    ... okay on input line 34.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 34.
-LaTeX Font Info:    ... okay on input line 34.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 34.
-LaTeX Font Info:    ... okay on input line 34.
-LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 34.
-LaTeX Font Info:    ... okay on input line 34.
-LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 34.
-LaTeX Font Info:    ... okay on input line 34.
-LaTeX Info: Redefining \it@ocap on input line 34.
-LaTeX Info: Redefining \it@ccap on input line 34.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 37.
+LaTeX Font Info:    ... okay on input line 37.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 37.
+LaTeX Font Info:    ... okay on input line 37.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 37.
+LaTeX Font Info:    ... okay on input line 37.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 37.
+LaTeX Font Info:    ... okay on input line 37.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 37.
+LaTeX Font Info:    ... okay on input line 37.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 37.
+LaTeX Font Info:    ... okay on input line 37.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 37.
+LaTeX Font Info:    ... okay on input line 37.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 37.
+LaTeX Font Info:    ... okay on input line 37.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 37.
+LaTeX Font Info:    ... okay on input line 37.
+LaTeX Info: Redefining \it@ocap on input line 37.
+LaTeX Info: Redefining \it@ccap on input line 37.
 
 *geometry* driver: auto-detecting
 *geometry* detected driver: pdftex
@@ -462,17 +489,17 @@ LaTeX Info: Redefining \it@ccap on input line 34.
 
 (/usr/local/texlive/2025/texmf-dist/tex/context/base/mkii/supp-pdf.mkii
 [Loading MPS to PDF converter (version 2006.09.02).]
-\scratchcounter=\count319
-\scratchdimen=\dimen192
-\scratchbox=\box58
-\nofMPsegments=\count320
-\nofMParguments=\count321
-\everyMPshowfont=\toks28
-\MPscratchCnt=\count322
-\MPscratchDim=\dimen193
-\MPnumerator=\count323
-\makeMPintoPDFobject=\count324
-\everyMPtoPDFconversion=\toks29
+\scratchcounter=\count322
+\scratchdimen=\dimen194
+\scratchbox=\box60
+\nofMPsegments=\count323
+\nofMParguments=\count324
+\everyMPshowfont=\toks30
+\MPscratchCnt=\count325
+\MPscratchDim=\dimen195
+\MPnumerator=\count326
+\makeMPintoPDFobject=\count327
+\everyMPtoPDFconversion=\toks31
 ) (/usr/local/texlive/2025/texmf-dist/tex/latex/epstopdf-pkg/epstopdf-base.sty
 Package: epstopdf-base 2020-01-24 v2.11 Base part for package epstopdf
 Package epstopdf-base Info: Redefining graphics rule for `.eps' on input line 4
@@ -482,8 +509,8 @@ Package epstopdf-base Info: Redefining graphics rule for `.eps' on input line 4
 File: epstopdf-sys.cfg 2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Liv
 e
 ))
-\c@lstlisting=\count325
-Package hyperref Info: Link coloring OFF on input line 34.
+\c@lstlisting=\count328
+Package hyperref Info: Link coloring OFF on input line 37.
 
 (./report_ITA.out) (./report_ITA.out)
 \@outlinefile=\write3
@@ -492,138 +519,143 @@ Package hyperref Info: Link coloring OFF on input line 34.
 Package caption Info: Begin \AtBeginDocument code.
 Package caption Info: End \AtBeginDocument code.
 
-Underfull \hbox (badness 5475) in paragraph at lines 63--64
-\T1/cmr/m/n/10 Il ker-nel C++ ``plain'' vie-ne com-pi-la-to da un
- []
 
-
-Underfull \hbox (badness 6094) in paragraph at lines 63--64
-\T1/cmr/m/n/10 sin-go-lo fi-le sor-gen-te in due bi-na-ri: uno con
- []
-
-
-Underfull \hbox (badness 3895) in paragraph at lines 63--64
-\T1/cmtt/m/n/10 -fno-tree-vectorize \T1/cmr/m/n/10 (ba-se-li-ne), l'al-tro con 
-\T1/cmtt/m/n/10 -O3
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 63--64
-\T1/cmtt/m/n/10 -march=native -mavx2 -ftree-vectorize \T1/cmr/m/n/10 (au-to-
- []
-
-
-
-
-Underfull \hbox (badness 2922) in paragraph at lines 88--89
-[]\T1/cmr/m/n/10 Il bi-na-rio AVX2 ve-ri-fi-ca la cor-ret-tez-za ri-spet-
- []
-
-
-Underfull \hbox (badness 1728) in paragraph at lines 95--96
-\T1/cmr/m/n/10 Tutti i ben-ch-mark so-no sta-ti ese-gui-ti su no-de09
- []
-
-
-Underfull \hbox (badness 1609) in paragraph at lines 95--96
-\T1/cmr/m/n/10 (AMD EPYC 7301, Zen 1, DDR4-2666) con al-
- []
-
-
-Underfull \vbox (badness 4303) has occurred while \output is active []
-
-
+(/usr/local/texlive/2025/texmf-dist/tex/latex/listings/lstlang1.sty
+File: lstlang1.sty 2024/09/23 1.10c listings language file
+)
+(/usr/local/texlive/2025/texmf-dist/tex/latex/listings/lstlang1.sty
+File: lstlang1.sty 2024/09/23 1.10c listings language file
+)
+(/usr/local/texlive/2025/texmf-dist/tex/latex/listings/lstmisc.sty
+File: lstmisc.sty 2024/09/23 1.10c (Carsten Heinz)
+)
 
 [1{/usr/local/texlive/2025/texmf-var/fonts/map/pdftex/updmap/pdftex.map}{/usr/l
 ocal/texlive/2025/texmf-dist/fonts/enc/dvips/cm-super/cm-super-t1.enc}
 
 
 ]
-<../results/plots/14_roofline.png, id=95, 632.1216pt x 455.301pt>
-File: ../results/plots/14_roofline.png Graphic file (type png)
-<use ../results/plots/14_roofline.png>
-Package pdftex.def Info: ../results/plots/14_roofline.png  used on input line 1
-31.
-(pdftex.def)             Requested size: 239.00298pt x 172.14775pt.
+Underfull \vbox (badness 6893) has occurred while \output is active []
 
 
-<../results/plots/18_psweep_keyspace_combined.png, id=100, 714.5094pt x 267.880
-8pt>
-File: ../results/plots/18_psweep_keyspace_combined.png Graphic file (type png)
-<use ../results/plots/18_psweep_keyspace_combined.png>
-Package pdftex.def Info: ../results/plots/18_psweep_keyspace_combined.png  used
- on input line 150.
-(pdftex.def)             Requested size: 239.00298pt x 89.60675pt.
-<../results/plots/03_speedup_vs_N.png, id=101, 614.7768pt x 399.4122pt>
-File: ../results/plots/03_speedup_vs_N.png Graphic file (type png)
-<use ../results/plots/03_speedup_vs_N.png>
-Package pdftex.def Info: ../results/plots/03_speedup_vs_N.png  used on input li
-ne 157.
-(pdftex.def)             Requested size: 239.00298pt x 155.27647pt.
 
+<../results/plots/strong_speedup.pdf, id=54, 613.69278pt x 398.43481pt>
+File: ../results/plots/strong_speedup.pdf Graphic file (type pdf)
+<use ../results/plots/strong_speedup.pdf>
+Package pdftex.def Info: ../results/plots/strong_speedup.pdf  used on input lin
+e 170.
+(pdftex.def)             Requested size: 242.59084pt x 157.49858pt.
+<../results/plots/strong_efficiency.pdf, id=55, 630.2076pt x 398.43481pt>
+File: ../results/plots/strong_efficiency.pdf Graphic file (type pdf)
+<use ../results/plots/strong_efficiency.pdf>
+Package pdftex.def Info: ../results/plots/strong_efficiency.pdf  used on input 
+line 176.
+(pdftex.def)             Requested size: 242.59084pt x 153.37051pt.
+<../results/plots/weak_scaling.pdf, id=56, 999.59636pt x 388.10118pt>
+File: ../results/plots/weak_scaling.pdf Graphic file (type pdf)
+<use ../results/plots/weak_scaling.pdf>
+Package pdftex.def Info: ../results/plots/weak_scaling.pdf  used on input line 
+210.
+(pdftex.def)             Requested size: 420.81914pt x 163.3863pt.
 
-[2 <../results/plots/14_roofline.png> <../results/plots/18_psweep_keyspace_comb
-ined.png> <../results/plots/03_speedup_vs_N.png>]
-Overfull \hbox (13.30974pt too wide) in paragraph at lines 175--186
- [][] 
+Underfull \hbox (badness 10000) in paragraph at lines 231--232
+\T1/cmr/m/n/8 End-to-end in-clu-de l'al-lo-ca-zio-ne de-gli ar-ray par-ti-zio-n
+a-ti
  []
 
+<../results/plots/phase_speedup.pdf, id=59, 611.30887pt x 398.43481pt>
+File: ../results/plots/phase_speedup.pdf Graphic file (type pdf)
+<use ../results/plots/phase_speedup.pdf>
+Package pdftex.def Info: ../results/plots/phase_speedup.pdf  used on input line
+ 235.
+(pdftex.def)             Requested size: 239.00298pt x 155.77805pt.
 
-Underfull \hbox (badness 1424) in paragraph at lines 203--204
-[]\T1/cmr/m/n/10 P. Fer-ra-gi-na, \T1/cmr/m/it/10 Pearls of Al-go-ri-thm En-gi-
-nee-ring\T1/cmr/m/n/10 .
- []
+LaTeX Warning: `h' float specifier changed to `ht'.
 
 
 
+[2]
+
+<../results/plots/amdahl_fit.pdf, id=90, 611.30887pt x 398.43481pt>
+File: ../results/plots/amdahl_fit.pdf Graphic file (type pdf)
+<use ../results/plots/amdahl_fit.pdf>
+Package pdftex.def Info: ../results/plots/amdahl_fit.pdf  used on input line 25
+6.
+(pdftex.def)             Requested size: 239.00298pt x 155.77805pt.
+
+LaTeX Warning: `h' float specifier changed to `ht'.
 
 
-[3
 
-] (./report_ITA.aux)
+[3 <../results/plots/strong_speedup.pdf> <../results/plots/strong_efficiency.pd
+f> <../results/plots/weak_scaling.pdf> <../results/plots/phase_speedup.pdf>]
+
+<../results/plots/partition_sensitivity.pdf, id=407, 618.33511pt x 398.43481pt>
+
+File: ../results/plots/partition_sensitivity.pdf Graphic file (type pdf)
+<use ../results/plots/partition_sensitivity.pdf>
+Package pdftex.def Info: ../results/plots/partition_sensitivity.pdf  used on in
+put line 284.
+(pdftex.def)             Requested size: 239.00298pt x 154.00279pt.
+<../results/plots/duplicate_density.pdf, id=408, 1003.03229pt x 386.05855pt>
+File: ../results/plots/duplicate_density.pdf Graphic file (type pdf)
+<use ../results/plots/duplicate_density.pdf>
+Package pdftex.def Info: ../results/plots/duplicate_density.pdf  used on input 
+line 295.
+(pdftex.def)             Requested size: 239.00298pt x 91.99028pt.
+
+
+[4 <../results/plots/amdahl_fit.pdf> <../results/plots/partition_sensitivity.pd
+f> <../results/plots/duplicate_density.pdf>] (./report_ITA.aux)
  ***********
 LaTeX2e <2024-11-01> patch level 2
 L3 programming layer <2025-01-18>
  ***********
 Package rerunfilecheck Info: File `report_ITA.out' has not changed.
-(rerunfilecheck)             Checksum: 41E3AD487E381C8B463A3E3739B5ECC7;1913.
+(rerunfilecheck)             Checksum: 7794AD6F7F4DAAA514F1AA2549E68CCC;632.
  ) 
 Here is how much of TeX's memory you used:
- 14875 strings out of 473190
- 233414 string characters out of 5715800
- 756521 words of memory out of 5000000
- 37928 multiletter control sequences out of 15000+600000
- 575391 words of font info for 71 fonts, out of 8000000 for 9000
+ 15418 strings out of 473190
+ 242671 string characters out of 5715800
+ 967522 words of memory out of 5000000
+ 38435 multiletter control sequences out of 15000+600000
+ 577697 words of font info for 74 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 75i,11n,79p,862b,1076s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 75i,11n,79p,1162b,2035s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb
 ></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb>
 </usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></
-usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9.pfb></us
-r/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/
-local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb></usr/loc
-al/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/local/
-texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/local/tex
-live/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texl
-ive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/local/texliv
-e/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.pfb></usr/local/texlive/
-2025/texmf-dist/fonts/type1/public/cm-super/sfbx0900.pfb></usr/local/texlive/20
-25/texmf-dist/fonts/type1/public/cm-super/sfbx1000.pfb></usr/local/texlive/2025
-/texmf-dist/fonts/type1/public/cm-super/sfbx1200.pfb></usr/local/texlive/2025/t
-exmf-dist/fonts/type1/public/cm-super/sfbx1440.pfb></usr/local/texlive/2025/tex
-mf-dist/fonts/type1/public/cm-super/sfbx1728.pfb></usr/local/texlive/2025/texmf
--dist/fonts/type1/public/cm-super/sfrm0700.pfb></usr/local/texlive/2025/texmf-d
-ist/fonts/type1/public/cm-super/sfrm0900.pfb></usr/local/texlive/2025/texmf-dis
-t/fonts/type1/public/cm-super/sfrm1000.pfb></usr/local/texlive/2025/texmf-dist/
-fonts/type1/public/cm-super/sfrm1200.pfb></usr/local/texlive/2025/texmf-dist/fo
-nts/type1/public/cm-super/sfti0900.pfb></usr/local/texlive/2025/texmf-dist/font
-s/type1/public/cm-super/sfti1000.pfb></usr/local/texlive/2025/texmf-dist/fonts/
-type1/public/cm-super/sftt0800.pfb></usr/local/texlive/2025/texmf-dist/fonts/ty
-pe1/public/cm-super/sftt1000.pfb>
-Output written on report_ITA.pdf (3 pages, 608740 bytes).
+usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb></us
+r/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9.pfb></usr/
+local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/lo
+cal/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/local
+/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/local/te
+xlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/local/texli
+ve/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texliv
+e/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy6.pfb></usr/local/texlive/
+2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/local/texlive/20
+25/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/local/texlive/2025
+/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.pfb></usr/local/texlive/2025/t
+exmf-dist/fonts/type1/public/cm-super/sfbx0800.pfb></usr/local/texlive/2025/tex
+mf-dist/fonts/type1/public/cm-super/sfbx0900.pfb></usr/local/texlive/2025/texmf
+-dist/fonts/type1/public/cm-super/sfbx1000.pfb></usr/local/texlive/2025/texmf-d
+ist/fonts/type1/public/cm-super/sfbx1200.pfb></usr/local/texlive/2025/texmf-dis
+t/fonts/type1/public/cm-super/sfbx1440.pfb></usr/local/texlive/2025/texmf-dist/
+fonts/type1/public/cm-super/sfbx1728.pfb></usr/local/texlive/2025/texmf-dist/fo
+nts/type1/public/cm-super/sfrm0600.pfb></usr/local/texlive/2025/texmf-dist/font
+s/type1/public/cm-super/sfrm0800.pfb></usr/local/texlive/2025/texmf-dist/fonts/
+type1/public/cm-super/sfrm0900.pfb></usr/local/texlive/2025/texmf-dist/fonts/ty
+pe1/public/cm-super/sfrm1000.pfb></usr/local/texlive/2025/texmf-dist/fonts/type
+1/public/cm-super/sfrm1200.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/
+public/cm-super/sfti0900.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/pu
+blic/cm-super/sfti1000.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/publ
+ic/cm-super/sftt0800.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public
+/cm-super/sftt0900.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/c
+m-super/sftt1000.pfb>
+Output written on report_ITA.pdf (4 pages, 646093 bytes).
 PDF statistics:
- 235 PDF objects out of 1000 (max. 8388607)
- 174 compressed objects within 2 object streams
- 34 named destinations out of 1000 (max. 500000)
- 120 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 758 PDF objects out of 1000 (max. 8388607)
+ 266 compressed objects within 3 object streams
+ 49 named destinations out of 1000 (max. 500000)
+ 68 words of extra memory for PDF output out of 10000 (max. 10000000)
 
