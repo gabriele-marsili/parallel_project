@@ -24,9 +24,9 @@ void partition_map(const spm_key_t *__restrict__ keys,
 ### Hash function: XOR-fold + Fibonacci mul32
 
 La scelta della hash a 32 bit è motivata dalla compatibilità SIMD:
-- `HASH_A32 * mixed` è una **mul32** → in AVX2 corrisponde a `vpmulld` (nativa)
+- `HASH_A32 * mixed` è una **mul32** -> in AVX2 corrisponde a `vpmulld` (nativa)
 - Con una hash a 64 bit (`HASH_A * key`) servirebbe una mul64, che in AVX2
-  richiede 3× `vpmuludq` (non nativa) → overhead che annulla il vantaggio SIMD
+  richiede 3× `vpmuludq` (non nativa) -> overhead che annulla il vantaggio SIMD
 
 ### Condizioni per auto-vectorization (L7&8)
 

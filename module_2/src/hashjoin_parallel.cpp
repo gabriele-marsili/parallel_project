@@ -1,34 +1,32 @@
-// hashjoin_parallel.cpp — Parallel implementation with C++ threads
-//
-// Partitioned Hash Join with Duplicates
-// Module-1 hash function: XOR-fold + Fibonacci multiply-shift.
-//
-// Parallelization strategy (theory references from SPM lectures):
-//
-//   Histogram:  Data-parallel MAP with thread-local histograms + sequential merge.
-//               Block distribution (Lezione 14: static policies for regular workloads).
-//               Each thread processes N/k contiguous records → good spatial locality.
-//
-//   Prefix sum: Sequential — O(P), negligible fraction of total time.
-//               (Lezione 15: span-limited, T∞ = O(P), not worth parallelizing)
-//
-//   Scatter:    Lock-free parallel scatter with pre-computed per-thread offsets.
-//               Leverages local histograms to compute non-overlapping write regions.
-//               No synchronization needed (Lezione 14: each thread writes to its own region).
-//               Cache-unfriendly (random writes) → inherently memory-bound.
-//
-//   Join local: Cyclic distribution — thread t joins partitions t, t+k, t+2k, ...
-//               Zero scheduling overhead (no atomics, no sorting).
-//               For uniform hash functions the partition sizes are nearly equal,
-//               so cyclic ≈ optimal static load balance with minimal variance.
-//               Padded per-thread results avoid false sharing (Lezione 5-6: alignas(64)).
-//
-//   Thread reuse: Threads are spawned once and reused across phases via std::barrier (C++20).
-//                 Eliminates spawn/join overhead between phases (Lezione 10: reducing O(p) overhead
-//                 in the extended Amdahl's model with linear overhead term).
-//
-// Compile: g++ -O3 -std=c++20 -Wall -Wextra -march=native -pthread -Iinclude src/hashjoin_parallel.cpp -o hashjoin_par
-// Run:     ./hashjoin_par -nr 10000000 -ns 20000000 -seed 42 -max-key 100000 -p 128 -t 8
+//Parallel implementation with C++ threads
+
+/* Parallelization strategy:
+
+• Histogram: Data-parallel MAP with thread-local histograms + sequential merge.
+Block distribution
+-> Each thread processes N/k contiguous records -> good spatial locality.
+
+• Prefix sum: Sequential — O(P), negligible fraction of total time.
+(T∞ = O(P), not worth parallelizing)
+
+• Scatter: Lock-free parallel scatter with pre-computed per-thread offsets.
+Leverages local histograms to compute non-overlapping write regions.
+No synchronization needed (each thread writes to its own region).
+Cache-unfriendly (random writes) -> inherently memory-bound.
+
+• Join local: Cyclic distribution —> thread t joins partitions t, t+k, t+2k, ...
+Zero scheduling overhead (no atomics, no sorting).
+For uniform hash functions the partition sizes are nearly equal,
+so cyclic is almost optimal static load balance with minimal variance.
+Padded per-thread results avoid false sharing.
+
+• Thread reuse: Threads are spawned once and reused across phases via std::barrier (C++20).
+Eliminates spawn/join overhead between phases (reducing O(p) overhead
+in the extended Amdahl's model with linear overhead term).
+
+-> Compile: g++ -O3 -std=c++20 -Wall -Wextra -march=native -pthread -Iinclude src/hashjoin_parallel.cpp -o hashjoin_par
+-> Run: ./hashjoin_par -nr 10000000 -ns 20000000 -seed 42 -max-key 100000 -p 128 -t 8
+*/
 
 #include <barrier>
 #include <chrono>
@@ -48,9 +46,7 @@
 #include "utilities_fns.hpp"
 #include "verifier.hpp"
 
-// ============================================================
-// Thread count heuristic
-// ============================================================
+// Thread count heuristic:
 // Avoids oversubscription and prevents launching threads for tiny workloads.
 // min_items_per_thread: below this, a single thread is more efficient than
 // paying the thread coordination overhead.
@@ -63,20 +59,17 @@ static int compute_thread_count(std::size_t workload_items,
     return std::min(useful, max_threads);
 }
 
-// ============================================================
-// Full parallel pipeline — single thread-team, barrier-synchronized
-// ============================================================
-// All phases run on the SAME set of threads, synchronized by barriers.
-// This avoids the cost of spawning/joining threads between phases.
-//
-// From Lezione 10 (extended Amdahl with overhead):
-//   S(p) ≤ 1 / [f + O(p) + (1-f)/p]
-// where O(p) includes thread creation overhead. By reusing threads,
-// we reduce O(p) from ~6 spawn/join cycles to 1.
+/*Full parallel pipeline — single thread-team, barrier-synchronized:
+All phases run on the SAME set of threads, synchronized by barriers.
+This avoids the cost of spawning/joining threads between phases.
 
-// out_R and out_S must be pre-allocated to size NR and NS respectively before
-// the timed region in main(). Passing them in avoids ~240 MB of heap allocation
-// inside the pipeline, so the outer timer measures only the algorithm phases.
+(extended) Amdahl with overhead:
+S(p) ≤ 1 / [f + O(p) + (1-f)/p]
+where O(p) includes thread creation overhead. 
+reusing threads => reduce O(p) from ~6 spawn/join cycles to 1.
+
+out_R and out_S must be pre-allocated to size NR and NS respectively before the timed region in main()
+*/
 static JoinResult partitioned_hash_join_parallel(const std::vector<Record>& R,
                                                   const std::vector<Record>& S,
                                                   std::uint32_t P, int nthreads,
@@ -99,13 +92,13 @@ static JoinResult partitioned_hash_join_parallel(const std::vector<Record>& R,
     // Global histograms, offsets, output arrays
     std::vector<std::size_t> global_hist_R(P, 0), global_hist_S(P, 0);
     std::vector<std::size_t> global_begin_R(P, 0), global_begin_S(P, 0);
-    // out_R and out_S are pre-allocated by the caller — no allocation here.
+    // out_R and out_S are pre-allocated by the caller —> no allocation here.
 
     // Per-thread scatter offsets
     std::vector<std::vector<std::size_t>> offsets_R(nt, std::vector<std::size_t>(P));
     std::vector<std::vector<std::size_t>> offsets_S(nt, std::vector<std::size_t>(P));
 
-    // Join results — padded to avoid false sharing (Lezione 5-6: cache line = 64B)
+    // Join results — padded to avoid false sharing 
     struct alignas(64) PaddedResult { JoinResult result{}; };
     std::vector<PaddedResult> thr_results(nt);
 
@@ -121,9 +114,9 @@ static JoinResult partitioned_hash_join_parallel(const std::vector<Record>& R,
         double elapsed = std::chrono::duration<double>(phase_t1 - phase_t0).count();
 
         switch (phase) {
-            case 0: { // After histogram R → compute prefix sum + scatter offsets for R
+            case 0: { // After histogram R -> compute prefix sum + scatter offsets for R
                 timing.histogram_R = elapsed;
-                // Merge local histograms → global
+                // Merge local histograms -> global
                 for (int t = 0; t < nt; ++t)
                     for (std::uint32_t pid = 0; pid < P; ++pid)
                         global_hist_R[pid] += local_hists_R[t][pid];
@@ -139,11 +132,11 @@ static JoinResult partitioned_hash_join_parallel(const std::vector<Record>& R,
                 }
                 break;
             }
-            case 1: { // After scatter R → record time
+            case 1: { // After scatter R -> record time
                 timing.scatter_R = elapsed;
                 break;
             }
-            case 2: { // After histogram S → compute prefix sum + scatter offsets for S
+            case 2: { // After histogram S -> compute prefix sum + scatter offsets for S
                 timing.histogram_S = elapsed;
                 for (int t = 0; t < nt; ++t)
                     for (std::uint32_t pid = 0; pid < P; ++pid)
@@ -158,11 +151,11 @@ static JoinResult partitioned_hash_join_parallel(const std::vector<Record>& R,
                 }
                 break;
             }
-            case 3: { // After scatter S → record time
+            case 3: { // After scatter S -> record time
                 timing.scatter_S = elapsed;
                 break;
             }
-            case 4: { // After join → record time
+            case 4: { // After join -> record time
                 timing.join_local = elapsed;
                 break;
             }
@@ -226,11 +219,11 @@ static JoinResult partitioned_hash_join_parallel(const std::vector<Record>& R,
             // Thread t owns partitions t, t+nt, t+2*nt, ...
             // Zero scheduling overhead: no atomics, no sorting.
             // For uniform hash functions partition sizes are nearly equal,
-            // so cyclic ≈ optimal static load balance.
+            // so cyclic is approximately equal to optimal static load balance.
             {
                 JoinResult local{};
                 for (std::uint32_t pid = static_cast<std::uint32_t>(t); pid < P;
-                     pid += static_cast<std::uint32_t>(nt)) {
+                    pid += static_cast<std::uint32_t>(nt)) {
                     const std::size_t rb = global_begin_R[pid];
                     const std::size_t re = rb + global_hist_R[pid];
                     const std::size_t sb = global_begin_S[pid];

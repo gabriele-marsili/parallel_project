@@ -509,9 +509,9 @@ def plot_cuda_breakdown(cuda_df, outdir, fmt):
     d2h = sweep['d2h_ms'].astype(float).values
 
     fig, ax = plt.subplots()
-    ax.bar(x, h2d, width, label='H→D transfer', color='#EF5350')
+    ax.bar(x, h2d, width, label='H->D transfer', color='#EF5350')
     ax.bar(x, kern, width, bottom=h2d, label='Kernel', color='#66BB6A')
-    ax.bar(x, d2h, width, bottom=h2d + kern, label='D→H transfer', color='#42A5F5')
+    ax.bar(x, d2h, width, bottom=h2d + kern, label='D->H transfer', color='#42A5F5')
 
     # etichette percentuale sul kernel
     for i in range(len(x)):
@@ -589,8 +589,8 @@ def plot_simd_metrics(df, outdir, fmt):
     
     Nel contesto SIMD, il "numero di processori" p corrisponde alla
     larghezza del vettore:
-      p=1 → scalare (baseline)
-      p=8 → AVX2 256-bit su uint32 (autovec e intrinsics)
+      p=1 -> scalare (baseline)
+      p=8 -> AVX2 256-bit su uint32 (autovec e intrinsics)
     
     Metriche calcolate:
       Speedup S(p) = T_seq / T_par(p)
@@ -649,7 +649,7 @@ def plot_simd_metrics(df, outdir, fmt):
         ax.plot(sub['N'], sub['speedup'], marker=markers[impl],
                 color=colors[impl], label=impl)
     # Amdahl bound per diversi valori di f
-    # Stima f dal miglior speedup osservato: S = 1/(f + (1-f)/p) → f = (1/S - 1/p)/(1 - 1/p)
+    # Stima f dal miglior speedup osservato: S = 1/(f + (1-f)/p) -> f = (1/S - 1/p)/(1 - 1/p)
     best_S = mdf['speedup'].max()
     f_est = (1.0/best_S - 1.0/p_simd) / (1.0 - 1.0/p_simd)
     s_amdahl = 1.0 / (f_est + (1.0 - f_est) / p_simd)

@@ -1,3 +1,8 @@
+# [OBSOLETO — NON INCLUDERE NEI DELIVERABLE]
+# Questa analisi è basata su dati pre-ottimizzazione (pre-allocazione, NR=10M T_seq≈1300ms).
+# I numeri corretti sono nel report finale (T_seq≈782ms, speedup max 8.3×/9.3×).
+# File mantenuto solo per tracciabilità dello sviluppo.
+
 # Analisi dei Risultati — SPM Modulo 2
 
 **Piattaforma**: Intel Xeon E5-2640 v2 @ 2.00GHz, 2 socket × 8 core (16 fisici, 32 con HT), NUMA  
@@ -27,7 +32,7 @@
    significativo nell'infrastruttura parallela.
 
 2. **Speedup sub-lineare, degradamento dell'efficienza**: l'efficienza scende dal 77% (2 thread) al 33%
-   (20 thread). Dalla Legge di Amdahl, la fraction seriale stimata è **f ≈ 0.10** → speedup massimo
+   (20 thread). Dalla Legge di Amdahl, la fraction seriale stimata è **f ≈ 0.10** -> speedup massimo
    teorico ≈ 9.8x. Con 20 thread otteniamo 6.7-7.0x, coerente con la previsione Amdahl.
 
 3. **Il problema size NON cambia significativamente il profilo di scaling**: NR=10M e NR=20M producono
@@ -90,7 +95,7 @@ un'architettura NUMA dual-socket.
 | **Join Local** | **778ms** | **59.9%** |
 | **TOTALE** | **1299ms** | 100% |
 
-### Speedup per-fase (seq → 20 thread)
+### Speedup per-fase (seq -> 20 thread)
 
 | Fase | Speedup | Tipo di bottleneck |
 |------|---------|-------------------|
@@ -103,7 +108,7 @@ un'architettura NUMA dual-socket.
 1. **Join Local scala bene (12.9x con 20 thread)**: è la fase compute-intensive dove la hash table
    locale (NR/P ≈ 78K entry per partizione) sta in cache L2/L3. L'accesso è locale alla partizione,
    nessuna condivisione tra thread. La distribuzione dinamica bilancia bene partizioni di dimensione
-   variabile. Efficienza 64% → buona per una fase che include anche l'overhead di `std::unordered_map`.
+   variabile. Efficienza 64% -> buona per una fase che include anche l'overhead di `std::unordered_map`.
 
 2. **Scatter scala bene (11.2x)**: il pattern lock-free con offset pre-calcolati funziona: ogni thread
    scrive in regioni non-overlapping. Il collo di bottiglia è la **bandwidth di scrittura**: le scritture
@@ -141,9 +146,9 @@ un'architettura NUMA dual-socket.
 Il tempo diminuisce all'aumentare di P fino a un plateau a P ≈ 512-1024. Questo è coerente con la
 teoria del partitioned hash join:
 
-- **Più partizioni → hash table locali più piccole → meglio in cache**: con NR=10M e P=1024, ogni
-  partizione ha ~10K record → la hash table countR ha ~10K entry × 12B ≈ 120KB → sta in L2 (256KB).
-  Con P=16, la hash table avrebbe ~625K entry ≈ 7.5MB → trabocca dalla L2 e dalla L3 condivisa.
+- **Più partizioni -> hash table locali più piccole -> meglio in cache**: con NR=10M e P=1024, ogni
+  partizione ha ~10K record -> la hash table countR ha ~10K entry × 12B ≈ 120KB -> sta in L2 (256KB).
+  Con P=16, la hash table avrebbe ~625K entry ≈ 7.5MB -> trabocca dalla L2 e dalla L3 condivisa.
 
 - **Il plateau indica che la hash table è già completamente in cache** a P=512. Aumentare ulteriormente
   P non migliora la località ma aggiunge overhead (più partizioni da iterare, offset arrays più grandi).
@@ -167,20 +172,20 @@ teoria del partitioned hash join:
 ### Interpretazione
 
 1. **max_key ≤ 100K**: il tempo è quasi costante (~1030ms seq, ~170ms par). La hash table countR ha
-   al massimo 100K/P ≈ 781 entry per partizione → sta comodamente in L1 cache (32KB). I lookup
+   al massimo 100K/P ≈ 781 entry per partizione -> sta comodamente in L1 cache (32KB). I lookup
    sono velocissimi.
 
-2. **max_key = 1M**: lieve aumento (+25%). Ora countR ha ~7812 entry per partizione → ancora in L2 ma
+2. **max_key = 1M**: lieve aumento (+25%). Ora countR ha ~7812 entry per partizione -> ancora in L2 ma
    non in L1. Qualche cache miss in più.
 
 3. **max_key = 10M**: aumento significativo (+93%). Con chiavi quasi tutte distinte (NR=10M, max_key=10M),
-   countR ha ~78K entry per partizione × 12B ≈ 937KB → **non sta in L2** (256KB). Ogni lookup di
+   countR ha ~78K entry per partizione × 12B ≈ 937KB -> **non sta in L2** (256KB). Ogni lookup di
    `std::unordered_map` genera cache miss frequenti.
 
 4. **Lo speedup resta stabile (6.0-6.8x)**: il parallelismo è indipendente dalla densità dei duplicati
    perché le partizioni restano indipendenti. La leggera variazione è dovuta al bilanciamento: con
    poche chiavi (max_key=100), tutte le partizioni hanno carico simile; con molte chiavi, c'è più
-   varianza → la distribuzione dinamica compensa.
+   varianza -> la distribuzione dinamica compensa.
 
 ---
 
@@ -190,14 +195,14 @@ teoria del partitioned hash join:
 
 | Osservazione | Spiegazione teorica | Lezione |
 |---|---|---|
-| Speedup sub-lineare ~7x con 20 thread | Amdahl f ≈ 0.10 → S_max ≈ 10x | Lez. 10 |
+| Speedup sub-lineare ~7x con 20 thread | Amdahl f ≈ 0.10 -> S_max ≈ 10x | Lez. 10 |
 | Efficienza cala con più thread | Tipico di strong scaling con porzione seriale | Lez. 10 |
-| WSE > 1 per pochi thread (super-linear) | Cache effects: più core → più cache aggregata | Lez. 10 |
+| WSE > 1 per pochi thread (super-linear) | Cache effects: più core -> più cache aggregata | Lez. 10 |
 | WSE cala a 0.70 per 20 thread | NUMA + saturazione bandwidth | Lez. 5-6 |
 | Histogram scala male (2.4x) | Memory-bound, I ≈ 0.125 FLOP/byte | Lez. 5-6 (Roofline) |
 | Scatter scala bene (11.2x) | Lock-free, nessuna contention | Lez. 14 |
 | Join scala bene (12.9x) | Embarrassingly parallel + dynamic scheduling | Lez. 14 |
-| Più partizioni → più veloce (fino a plateau) | Hash table locale in cache | Lez. 5-6 |
-| max_key grande → più lento | Hash table trabocca dalla cache | Lez. 5-6 |
+| Più partizioni -> più veloce (fino a plateau) | Hash table locale in cache | Lez. 5-6 |
+| max_key grande -> più lento | Hash table trabocca dalla cache | Lez. 5-6 |
 
 **Nessuna incongruenza rilevata.** I risultati sono pronti per il report.

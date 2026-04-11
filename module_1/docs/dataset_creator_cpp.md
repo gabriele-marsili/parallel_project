@@ -9,7 +9,7 @@ Tool standalone che genera dataset di chiavi come file binari. I kernel (plain, 
 Il progetto dice: "Input keys are generated deterministically from a seed, so that the output is reproducible." Potremmo generare le chiavi dentro ogni binario di benchmark (come facciamo attualmente con `KeyGenerator::generate`), ma avere i dataset su file ha vantaggi:
 
 1. **Separazione**: il tempo di generazione non è incluso nelle misurazioni del kernel. Per N=200M la generazione richiede ~2 secondi, che falserebbero il benchmark se non scorporati.
-2. **Condivisione**: tutti i kernel leggono lo stesso file → garanzia assoluta che lavorano sugli stessi dati.
+2. **Condivisione**: tutti i kernel leggono lo stesso file -> garanzia assoluta che lavorano sugli stessi dati.
 3. **Idempotenza**: se il file esiste già ed è valido, non lo ricrea. Risparmi tempo quando devi rieseguire solo i benchmark.
 
 ---
@@ -75,7 +75,7 @@ static const DatasetConfig DEFAULTS[] = {
 
 I separatori `'` nei numeri (es. `1'000'000`) sono una feature C++14 per leggibilità. Il compilatore li ignora completamente.
 
-Tutti usano seed=42. Il seed è fisso perché serve riproducibilità: stessi parametri → stesso file → stesso output da tutti i kernel.
+Tutti usano seed=42. Il seed è fisso perché serve riproducibilità: stessi parametri -> stesso file -> stesso output da tutti i kernel.
 
 ---
 
@@ -150,10 +150,10 @@ static std::string make_auto_path(const std::string& dir, size_t N,
 ```
 
 Per il mode `--custom` senza `-o`, genera un nome leggibile. Esempio:
-- N=50000000, seed=42, key_space=0 → `data/ds_50M_full_s42.bin`
-- N=10000000, seed=7, key_space=1000 → `data/ds_10M_ks1000_s7.bin`
+- N=50000000, seed=42, key_space=0 -> `data/ds_50M_full_s42.bin`
+- N=10000000, seed=7, key_space=1000 -> `data/ds_10M_ks1000_s7.bin`
 
-I suffissi M/K/G sono applicati solo se N è un multiplo esatto (50000000 → 50M, ma 12345678 resta com'è).
+I suffissi M/K/G sono applicati solo se N è un multiplo esatto (50000000 -> 50M, ma 12345678 resta com'è).
 
 ---
 
@@ -162,8 +162,8 @@ I suffissi M/K/G sono applicati solo se N è un multiplo esatto (50000000 → 50
 ### DEFAULT (nessun argomento)
 Itera sui 5 dataset in `DEFAULTS[]`. Per ciascuno:
 1. Controlla se il file esiste ed è valido
-2. Se sì → `SKIP`
-3. Se no → genera, scrive, riporta tempo e dimensione
+2. Se sì -> `SKIP`
+3. Se no -> genera, scrive, riporta tempo e dimensione
 
 ### `--force`
 Come DEFAULT ma ignora i file esistenti e li ricrea tutti.

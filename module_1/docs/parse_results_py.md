@@ -68,12 +68,12 @@ Il parser è una macchina a stati che scorre il file riga per riga:
 ```
 stato iniziale
      │
-     ├── regex EXPERIMENT → salva nome esperimento
-     ├── regex CONTEXT    → salva N, P, key_space correnti
-     ├── regex TAG        → salva l'implementazione corrente
-     ├── regex CPU_RESULT → crea nuova riga con i campi numerici
-     ├── regex DISTRIB    → aggiunge campi distribuzione alla riga pendente
-     └── regex CHECKSUM   → aggiunge checksum alla riga pendente
+     ├── regex EXPERIMENT -> salva nome esperimento
+     ├── regex CONTEXT    -> salva N, P, key_space correnti
+     ├── regex TAG        -> salva l'implementazione corrente
+     ├── regex CPU_RESULT -> crea nuova riga con i campi numerici
+     ├── regex DISTRIB    -> aggiunge campi distribuzione alla riga pendente
+     └── regex CHECKSUM   -> aggiunge checksum alla riga pendente
 ```
 
 L'idea della "riga pendente" (`pending_row`): quando incontriamo una riga di risultato, la creiamo ma non la salviamo subito — aspettiamo le righe successive che contengono distribuzione e checksum. La salviamo quando arriva il prossimo tag `[impl]` o la fine del file.
@@ -86,7 +86,7 @@ La riga `--- N=100000000 P=256 ---` appare una volta, poi seguono i risultati di
 
 ## Logica di parsing: `parse_cuda_file`
 
-Simile ma più semplice: ogni blocco CUDA ha 4 righe di timing (H→D, Kernel, D→H, Totale) e 2 righe di throughput. Li accumuliamo in un dizionario `pending` e lo salviamo quando incontriamo il prossimo contesto.
+Simile ma più semplice: ogni blocco CUDA ha 4 righe di timing (H->D, Kernel, D->H, Totale) e 2 righe di throughput. Li accumuliamo in un dizionario `pending` e lo salviamo quando incontriamo il prossimo contesto.
 
 ---
 
@@ -110,8 +110,8 @@ I CSV usano `csv.DictWriter` per garantire l'ordine delle colonne e l'escape cor
 ## Ricerca automatica dei file
 
 Senza argomenti, lo script cerca in `results/` tutti i `.txt` e `.out`:
-- File con "cuda" nel nome → parsati come CUDA
-- File con "bench" o "cpu" nel nome → parsati come CPU
+- File con "cuda" nel nome -> parsati come CUDA
+- File con "bench" o "cpu" nel nome -> parsati come CPU
 
 Con argomenti espliciti:
 ```bash

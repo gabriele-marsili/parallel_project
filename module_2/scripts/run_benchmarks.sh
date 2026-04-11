@@ -92,7 +92,7 @@ echo "[*] Phase breakdown..."
 PHASE_CSV="$RESULTS/phase_breakdown.csv"
 echo "threads,histogram_R_ms,scatter_R_ms,histogram_S_ms,scatter_S_ms,join_local_ms,total_ms" > "$PHASE_CSV"
 
-# Parse a phase timing line: "  Label : VALUE ms  (...)" → extract VALUE (field 3)
+# Parse a phase timing line: "  Label : VALUE ms  (...)" -> extract VALUE (field 3)
 parse_phase() {
     echo "$1" | grep "$2" | awk '{print $3}'
 }

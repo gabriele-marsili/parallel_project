@@ -34,12 +34,12 @@ inline unsigned compute_shift(uint32_t P) {
 La scelta di operare a 32 bit è motivata dalla compatibilità SIMD:
 - AVX2 ha `_mm256_mullo_epi32` **(nativa, 1 istruzione, 8 mul in parallelo)**
 - AVX2 **NON** ha `_mm256_mullo_epi64` (disponibile solo da AVX-512)
-- Emulare una mul64 in AVX2 richiede 3× `vpmuludq` + shift + add → overhead che annulla il vantaggio SIMD
+- Emulare una mul64 in AVX2 richiede 3× `vpmuludq` + shift + add -> overhead che annulla il vantaggio SIMD
 
 ### La costante `0x9E3779B9`
 
 - floor(2³²/φ) dove φ = rapporto aureo = (1+√5)/2
-- **Dispari** (invertibile mod 2³²) → la mappa è una biiezione
+- **Dispari** (invertibile mod 2³²) -> la mappa è una biiezione
 - **Massima equidistribuzione** (Weyl sequence, Knuth TAOCP Vol. 3)
 - Distribuzione misurata: max/atteso ≤ 1.005 su 100M chiavi con P=256
 

@@ -43,8 +43,8 @@ for (size_t i = 0; i < simd_end; i += 8) {
 | `_mm256_load_si256`      | 2         | Carica 4+4 chiavi (aligned)   |
 | `_mm256_srli_epi64`      | 2         | Estrai k_hi (32 bit alti)     |
 | `_mm256_xor_si256`       | 2         | XOR fold                      |
-| `_mm256_permutevar8x32`  | 2         | Pack 64-bit → 32-bit          |
-| `_mm256_permute2x128`    | 1         | Combina 4+4 → 8 valori        |
+| `_mm256_permutevar8x32`  | 2         | Pack 64-bit -> 32-bit          |
+| `_mm256_permute2x128`    | 1         | Combina 4+4 -> 8 valori        |
 | `_mm256_mullo_epi32`     | 1         | **Fibonacci mul32 (NATIVA!)**  |
 | `_mm256_srli_epi32`      | 1         | Shift per partition id         |
 | `_mm256_storeu_si256`    | 1         | Store 8 risultati              |

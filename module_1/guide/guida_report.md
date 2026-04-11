@@ -28,7 +28,7 @@ precisi alle slide.
 
 ### Cosa scrivere
 
-Descrivi il problema (mapping N chiavi uint64_t → partition id in [0,P)),
+Descrivi il problema (mapping N chiavi uint64_t -> partition id in [0,P)),
 poi giustifica le tue due scelte chiave:
 
 #### 1a. Funzione hash: XOR-fold + Fibonacci multiply-shift a 32 bit
@@ -39,7 +39,7 @@ h(k) = ((k_lo ⊕ k_hi) · A₃₂) >> (32 − log₂P)      dove A₃₂ = 0x9E
 
 Motiva la scelta con quattro argomenti:
 
-1. **XOR + una moltiplicazione 32-bit + uno shift** → nessuna divisione,
+1. **XOR + una moltiplicazione 32-bit + uno shift** -> nessuna divisione,
    nessun modulo, nessun branch. È il tipo di operazione elementare che si
    vettorizza meglio (cfr. L7&8 slide 7: *"the same instruction is
    broadcasted to all ALUs"* — la nostra operazione è identica per ogni
@@ -52,7 +52,7 @@ Motiva la scelta con quattro argomenti:
    instruction"*), qui l'intrinsic corrisponde esattamente a una sola
    istruzione macchina.
 
-3. **P potenza di 2** → lo shift `(32 − log₂P)` è una costante nota a
+3. **P potenza di 2** -> lo shift `(32 − log₂P)` è una costante nota a
    compile-time. Nessuna necessità di divisione o modulo.
 
 4. **Distribuzione quasi-uniforme**: A₃₂ è il golden ratio a 32 bit
@@ -168,7 +168,7 @@ Elenco delle intrinsics usate per **8 chiavi** per iterazione:
 | `_mm256_srli_epi64` ×2   | Estrai k_hi (32 bit alti)     | 4×64 |
 | `_mm256_xor_si256`  ×2   | XOR fold: k_lo ⊕ k_hi        | 4×64 |
 | `_mm256_permutevar8x32` ×2 | Pack 32 bit bassi            | 8×32 |
-| `_mm256_permute2x128`    | Combina 4+4 → 8 valori        | 8×32 |
+| `_mm256_permute2x128`    | Combina 4+4 -> 8 valori        | 8×32 |
 | `_mm256_mullo_epi32`     | **Fibonacci mul32 (NATIVA!)**  | 8×32 |
 | `_mm256_srli_epi32`      | Shift dx per partition id      | 8×32 |
 | `_mm256_storeu_si256`    | Scrivi 8 partition id          | 8×32 |
@@ -237,7 +237,7 @@ Per ogni chiave il kernel esegue:
 Intensità operazionale: OI = 2 ops / 12 byte ≈ **0.17 ops/byte**
 
 Confronta col dot product della lezione L5&6 slide 5:
-*"2 FLOP / 16 GiB → il kernel è memory bound"*. Il nostro caso è analogo:
+*"2 FLOP / 16 GiB -> il kernel è memory bound"*. Il nostro caso è analogo:
 pochissimo compute per byte trasferito.
 
 #### Passo 2: calcola t_comp e t_mem (come nella lezione)
@@ -255,7 +255,7 @@ t_mem  = (N × 12 byte) / BW_singolo_core
        = 2.4 GB / ~16.4 GB/s
        ≈ 146 ms
 
-t_exec ≥ max(t_comp, t_mem) ≈ 148 ms    → AL CONFINE compute/memory
+t_exec ≥ max(t_comp, t_mem) ≈ 148 ms    -> AL CONFINE compute/memory
 ```
 
 Il tempo osservato (~220 ms baseline, ~165 ms AVX2) è coerente:
@@ -277,7 +277,7 @@ può superare il tetto di bandwidth.
 L'**autovec GCC** (1.43×) batte l'**AVX2 intrinsics** (1.31×) perché
 GCC applica loop unrolling e software pipelining automatici che
 migliorano l'utilizzo della bandwidth (meno overhead per istruzioni
-di controllo → prefetcher più efficace → BW effettiva più alta).
+di controllo -> prefetcher più efficace -> BW effettiva più alta).
 
 #### Passo 4: verifica con la bandwidth
 
@@ -321,21 +321,21 @@ insegnato nella lezione SLURM (L4).
 
 - 1 thread per chiave, 256 thread per blocco (multiplo del warp size 32,
   come indicato in L9 slide 23: *"often set to a multiple of 32"*)
-- Accesso coalesced: il thread `idx` legge `keys[idx]` → thread
+- Accesso coalesced: il thread `idx` legge `keys[idx]` -> thread
   consecutivi nello stesso warp leggono indirizzi consecutivi
   (L9 slide 28: *"Coalescing: Global memory is efficient when threads in
   a warp access contiguous and aligned addresses"*)
-- Pinned memory (`cudaMallocHost`) per i buffer host → consente DMA
+- Pinned memory (`cudaMallocHost`) per i buffer host -> consente DMA
   diretto CPU↔GPU senza page-fault
-- Timing via `cudaEvent` (separato per H→D, kernel, D→H)
+- Timing via `cudaEvent` (separato per H->D, kernel, D->H)
 
 ### 5b. Risultati (N=100M, P=256)
 
 | Fase           | Tempo (ms) | % totale |
 |----------------|-----------|----------|
-| H→D transfer   | 65.2      | 65.1%    |
+| H->D transfer   | 65.2      | 65.1%    |
 | **Kernel**     | **1.49**  | **1.5%** |
-| D→H transfer   | 33.5      | 33.4%    |
+| D->H transfer   | 33.5      | 33.4%    |
 | **Totale**     | **100.3** | 100%     |
 
 | Metrica                  | Valore            |
@@ -343,8 +343,8 @@ insegnato nella lezione SLURM (L4).
 | Throughput kernel-only   | 67,177 Mkeys/s    |
 | Throughput end-to-end    | 997 Mkeys/s       |
 | BW kernel (HBM2)         | 804 GB/s (81%)    |
-| BW H→D (PCIe 4.0)       | 12.3 GB/s (49%)   |
-| BW D→H (PCIe 4.0)       | 11.9 GB/s (48%)   |
+| BW H->D (PCIe 4.0)       | 12.3 GB/s (49%)   |
+| BW D->H (PCIe 4.0)       | 11.9 GB/s (48%)   |
 
 ### 5c. Analisi
 
@@ -439,7 +439,7 @@ objdump -d bin/avx2           | grep -A 20 '<_Z18partition_map_avx2PKmPjmj>:'
 | Data layout (SoA, stride) | L7&8 | 30, 39 | SoA > AoS; stride unitario per cache locality |
 | CUDA kernel launch | L9 | 22-23 | `<<<blocks, threads>>>`, 256 tpb multiplo di 32 |
 | A30 specs | L9 | 24 | 993 GB/s HBM2, PCIe 4.0 x16 |
-| Memory coalescing | L9 | 28 | Thread consecutivi → indirizzi consecutivi → efficiente |
+| Memory coalescing | L9 | 28 | Thread consecutivi -> indirizzi consecutivi -> efficiente |
 | GPU memory hierarchy | L9 | 10 | Global, Shared, L2, Registers |
 | Pinned memory + streams | L9 | slides su cudaMemcpyAsync | Per overlap transfer/compute |
 | Speedup definition | L10 | 5 | S(p) = T_seq / T_par(p) |
@@ -517,7 +517,7 @@ objdump -d bin/avx2           | grep -A 20 '<_Z18partition_map_avx2PKmPjmj>:'
 - [ ] C'è il calcolo di OI (ops/byte) e la classificazione memory-bound
 - [ ] C'è il calcolo `t_comp` vs `t_mem` (come L5&6 slide 5)
 - [ ] C'è la spiegazione di perché lo speedup SIMD è ~1.0× (memory-bound)
-- [ ] C'è il breakdown CUDA (H→D / kernel / D→H) con percentuali
+- [ ] C'è il breakdown CUDA (H->D / kernel / D->H) con percentuali
 - [ ] C'è la conclusione che il kernel CUDA è PCIe-bound end-to-end
 - [ ] Ci sono 4-5 grafici significativi (non di più)
 - [ ] La verifica di correttezza è menzionata (checksum + element-wise)

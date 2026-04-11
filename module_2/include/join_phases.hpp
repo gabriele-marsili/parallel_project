@@ -8,15 +8,13 @@
 #include "common_structs.hpp"
 #include "generator.hpp"
 
-// ============================================================
-// Shared algorithmic building blocks used by both
-// sequential and parallel implementations.
-// ============================================================
 
-// ------------------------------------------------------------
+// Shared algorithmic building blocks used by both sequential and parallel implementations.
+
+
+
 // Exclusive prefix sum — O(P), inherently sequential
 // Used by both seq and par (operates on small P-sized arrays).
-// ------------------------------------------------------------
 static inline std::vector<std::size_t> exclusive_prefix_sum(const std::vector<std::size_t>& hist) {
     std::vector<std::size_t> begin(hist.size(), 0);
     std::size_t running = 0;
@@ -27,32 +25,33 @@ static inline std::vector<std::size_t> exclusive_prefix_sum(const std::vector<st
     return begin;
 }
 
-// ------------------------------------------------------------
-// FlatCountMap — open-addressing hash table with linear probing
-//
-// Replaces std::unordered_map<uint64_t,uint32_t> for per-partition
-// key counting. Advantages over std::unordered_map:
-//   1. No heap allocations per slot (single contiguous vector)
-//   2. No pointer chasing (separate chaining eliminated)
-//   3. Better cache locality: each slot is 16 bytes; a cache line
-//      holds 4 slots → fewer misses during linear probing
-//
-// Sentinel: UINT64_MAX (safe because keys are always < max_key ≤ 2^30).
-// Table is sized to the next power of two ≥ 2 × r_count, keeping
-// the load factor ≤ 50% and bounding the expected probe length.
-// Slot hash: Fibonacci multiplicative hashing (distributes even
-// sequential keys uniformly across all table slots).
-// ------------------------------------------------------------
+
+/* FlatCountMap — open-addressing hash table with linear probing
+
+Replaces std::unordered_map<uint64_t,uint32_t> for per-partition key counting. 
+
+Advantages over std::unordered_map:
+1. No heap allocations per slot (single contiguous vector)
+2. No pointer chasing (separate chaining eliminated)
+3. Better cache locality: each slot is 16 bytes; a cache line holds 4 slots 
+    -> fewer misses during linear probing
+
+Sentinel: UINT64_MAX (safe because keys are always < max_key ≤ 2^30).
+Table is sized to the next power of two ≥ 2 × r_count, keeping
+the load factor ≤ 50% and bounding the expected probe length.
+Slot function: identity hash (key & mask) — avoids correlation
+with the Fibonacci partitioning hash used in histogram/scatter.
+*/
 struct FlatCountMap {
     struct Slot {
-        std::uint64_t key = ~0ULL;   // sentinel: empty
+        std::uint64_t key = ~0ULL; // sentinel: empty
         std::uint32_t cnt = 0;
-        std::uint32_t _p  = 0;       // padding → 16-byte slot (4 per cache line)
+        std::uint32_t _p  = 0; // padding -> 16-byte slot (4 per cache line)
     };
 
     std::vector<Slot> slots;
-    std::uint32_t     mask;          // slots.size() - 1 (power-of-two mask)
-    std::uint32_t     shift;         // 64 - log2(slots.size())
+    std::uint32_t     mask; // slots.size() - 1 (power-of-two mask)
+    std::uint32_t     shift; // 64 - log2(slots.size())
 
     explicit FlatCountMap(std::size_t r_count) {
         std::size_t n = 1;
@@ -62,7 +61,7 @@ struct FlatCountMap {
         shift = 0; // unused — kept for struct alignment
     }
 
-    // Map key → initial slot index.
+    // Map key -> initial slot index.
     // Identity-based: keys in [0, max_key) have uniform low bits,
     // so key & mask distributes them evenly without correlating
     // with the Fibonacci partitioning hash used in histogram/scatter.
@@ -88,12 +87,10 @@ struct FlatCountMap {
     }
 };
 
-// ------------------------------------------------------------
+
 // Local join on one partition (build + probe)
-//
-// Build:  scan R_p → FlatCountMap[key] = multiplicity
-// Probe:  scan S_p → for each key, add FlatCountMap[key] matches
-// ------------------------------------------------------------
+// Build:  scan R_p -> FlatCountMap[key] = multiplicity
+// Probe:  scan S_p -> for each key, add FlatCountMap[key] matches
 static inline JoinResult join_one_partition(const PartitionedRelation& Rpart,
                                             const PartitionedRelation& Spart,
                                             std::uint32_t pid) {

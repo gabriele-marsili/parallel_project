@@ -74,9 +74,9 @@ def plot_qualcosa(df, outdir, fmt):
 ### 01 — Throughput vs N
 Mostra come il throughput (Mkeys/s) varia con la dimensione dell'input.
 
-**Cosa cercare**: per N piccolo (1M) il throughput è alto perché i dati stanno in cache L2/L3. Per N grande (100M+) i dati non ci stanno più → il throughput cala e si stabilizza sul limite della bandwidth di memoria principale.
+**Cosa cercare**: per N piccolo (1M) il throughput è alto perché i dati stanno in cache L2/L3. Per N grande (100M+) i dati non ci stanno più -> il throughput cala e si stabilizza sul limite della bandwidth di memoria principale.
 
-**Asse X logaritmico**: perché N varia su ordini di grandezza diversi (1M → 200M). Senza scala log, i punti a 1M e 10M sarebbero schiacciati a sinistra.
+**Asse X logaritmico**: perché N varia su ordini di grandezza diversi (1M -> 200M). Senza scala log, i punti a 1M e 10M sarebbero schiacciati a sinistra.
 
 ### 03 — Speedup vs N
 Lo speedup è calcolato come:
@@ -100,13 +100,13 @@ Il rapporto `max(count) / atteso` dovrebbe essere vicino a 1.0 per una buona has
 ### 07 — Sensibilità al key_space
 Asse X categorico (non numerico) perché key_space=0 significa "full 64-bit" e va mostrato come label speciale.
 
-**Cosa cercare**: il throughput dovrebbe essere costante — la hash moltiplica comunque, indipendentemente dai duplicati. Se cambia, potrebbe essere un effetto di cache (chiavi in uno spazio ristretto → meno cache miss).
+**Cosa cercare**: il throughput dovrebbe essere costante — la hash moltiplica comunque, indipendentemente dai duplicati. Se cambia, potrebbe essere un effetto di cache (chiavi in uno spazio ristretto -> meno cache miss).
 
 ### 08 — CUDA breakdown (stacked bar)
 ```python
-ax.bar(x, h2d, width, label='H→D transfer')
+ax.bar(x, h2d, width, label='H->D transfer')
 ax.bar(x, kern, width, bottom=h2d, label='Kernel')
-ax.bar(x, d2h, width, bottom=h2d + kern, label='D→H transfer')
+ax.bar(x, d2h, width, bottom=h2d + kern, label='D->H transfer')
 ```
 Le barre sono impilate: il parametro `bottom` di ogni barra parte dalla cima della precedente.
 
@@ -133,7 +133,7 @@ def format_N(n):
     if n >= 1e6: return f'{n/1e6:.0f}M'
     ...
 ```
-Converte i numeri grandi in etichette leggibili per gli assi (1000000 → "1M").
+Converte i numeri grandi in etichette leggibili per gli assi (1000000 -> "1M").
 
 ### `save_fig(fig, outdir, name, fmt)`
 Salva con `bbox_inches='tight'` che ritaglia i bordi bianchi inutili (senza, matplotlib lascia margini enormi). `facecolor='white'` assicura sfondo bianco (il default in alcuni temi è trasparente, brutto nel report).

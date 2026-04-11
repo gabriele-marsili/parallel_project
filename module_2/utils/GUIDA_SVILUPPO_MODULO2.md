@@ -56,18 +56,18 @@ In SQL sarebbe: `SELECT * FROM R JOIN S ON R.key = S.key`.
 Per ogni r in R:             ← NR iterazioni
     Per ogni s in S:         ← NS iterazioni
         if r.key == s.key:
-            → match!
+            -> match!
 ```
-Complessità: **O(NR × NS)**. Con 10 milioni di record per tabella → 10¹⁴ confronti. Inaccettabile.
+Complessità: **O(NR × NS)**. Con 10 milioni di record per tabella -> 10¹⁴ confronti. Inaccettabile.
 
 **Approccio hash join classico** — costruisci una hash table su R, poi probi con S:
 ```
-1. Costruisci hash_table da R (key → lista di record)     O(NR)
+1. Costruisci hash_table da R (key -> lista di record)     O(NR)
 2. Per ogni s in S: cerca s.key nella hash_table           O(NS) in media
 ```
 Complessità: **O(NR + NS)**. Molto meglio! Ma c'è un problema: se R e S sono enormi
 (decine di milioni di record), la hash table potrebbe non entrare in cache, e ogni lookup
-produce cache miss → lento nella pratica.
+produce cache miss -> lento nella pratica.
 
 ### 1.1 L'idea del Partitioned Hash Join: "dividi e conquista"
 
@@ -103,7 +103,7 @@ S = [5, 3, 3, 7, 1, 3, 2, 5]       R_part1 = [3, 3, 5] (chiavi con h(k)=1)
                                      Ora posso fare il join su ogni
                                      coppia (R_partX, S_partX) in modo
                                      INDIPENDENTE. Ogni pezzo è piccolo
-                                     → hash table locale sta in cache!
+                                     -> hash table locale sta in cache!
 ```
 
 ### 1.2 Collegamento con il Modulo 1: la funzione di mapping
@@ -112,7 +112,7 @@ Qui entra in gioco il **Modulo 1**. Nel Modulo 1 hai implementato e ottimizzato 
 che, data una chiave a 64 bit e un numero P di partizioni, restituisce un **partition id** in `[0, P)`:
 
 ```
-h(key) → partition_id ∈ {0, 1, 2, ..., P-1}
+h(key) -> partition_id ∈ {0, 1, 2, ..., P-1}
 ```
 
 La tua implementazione dal Modulo 1 usa **XOR-fold + Fibonacci multiply-shift a 32 bit**:
@@ -207,7 +207,7 @@ Relazione S (NS = 6):
   chiave: [3,  5,  2,  8,  5,  7]
 ```
 
-#### STEP 1 — Mapping (key → partition_id)
+#### STEP 1 — Mapping (key -> partition_id)
 
 Applichiamo `h(key) = key % 4` a ogni record:
 
@@ -289,14 +289,14 @@ dell'array di output, usando un cursore per partizione:
 Cursori iniziali (= copia di begin_R):  next = [0, 2, 4, 6]
 
 Scorro R originale:
-  R[0] key=5, pid=1 → scrivi in out[next[1]] = out[2], poi next[1]++ → next=[0, 3, 4, 6]
-  R[1] key=2, pid=2 → scrivi in out[next[2]] = out[4], poi next[2]++ → next=[0, 3, 5, 6]
-  R[2] key=8, pid=0 → scrivi in out[next[0]] = out[0], poi next[0]++ → next=[1, 3, 5, 6]
-  R[3] key=3, pid=3 → scrivi in out[next[3]] = out[6], poi next[3]++ → next=[1, 3, 5, 7]
-  R[4] key=2, pid=2 → scrivi in out[next[2]] = out[5], poi next[2]++ → next=[1, 3, 6, 7]
-  R[5] key=5, pid=1 → scrivi in out[next[1]] = out[3], poi next[1]++ → next=[1, 4, 6, 7]
-  R[6] key=7, pid=3 → scrivi in out[next[3]] = out[7], poi next[3]++ → next=[1, 4, 6, 8]
-  R[7] key=4, pid=0 → scrivi in out[next[0]] = out[1], poi next[0]++ → next=[2, 4, 6, 8]
+  R[0] key=5, pid=1 -> scrivi in out[next[1]] = out[2], poi next[1]++ -> next=[0, 3, 4, 6]
+  R[1] key=2, pid=2 -> scrivi in out[next[2]] = out[4], poi next[2]++ -> next=[0, 3, 5, 6]
+  R[2] key=8, pid=0 -> scrivi in out[next[0]] = out[0], poi next[0]++ -> next=[1, 3, 5, 6]
+  R[3] key=3, pid=3 -> scrivi in out[next[3]] = out[6], poi next[3]++ -> next=[1, 3, 5, 7]
+  R[4] key=2, pid=2 -> scrivi in out[next[2]] = out[5], poi next[2]++ -> next=[1, 3, 6, 7]
+  R[5] key=5, pid=1 -> scrivi in out[next[1]] = out[3], poi next[1]++ -> next=[1, 4, 6, 7]
+  R[6] key=7, pid=3 -> scrivi in out[next[3]] = out[7], poi next[3]++ -> next=[1, 4, 6, 8]
+  R[7] key=4, pid=0 -> scrivi in out[next[0]] = out[1], poi next[0]++ -> next=[2, 4, 6, 8]
 
 Array R riordinato:
   posizione:  0    1  │  2    3  │  4    5  │  6    7
@@ -344,21 +344,21 @@ Per ogni partizione, scansioniamo la porzione di S e per ogni chiave cerchiamo i
 
 ```
 Partizione 0:  S_0 = [8],  countR = {8: 1, 4: 1}
-  key=8 → trovata! multiplicity=1 → join_count += 1
+  key=8 -> trovata! multiplicity=1 -> join_count += 1
 
 Partizione 1:  S_1 = [5, 5],  countR = {5: 2}
-  key=5 → trovata! multiplicity=2 → join_count += 2
-  key=5 → trovata! multiplicity=2 → join_count += 2
+  key=5 -> trovata! multiplicity=2 -> join_count += 2
+  key=5 -> trovata! multiplicity=2 -> join_count += 2
                                      ─────────────
                                      subtotale = 4
-  (Spiegazione: 5 appare 2 volte in R e 2 volte in S → 2×2 = 4 match)
+  (Spiegazione: 5 appare 2 volte in R e 2 volte in S -> 2×2 = 4 match)
 
 Partizione 2:  S_2 = [2],  countR = {2: 2}
-  key=2 → trovata! multiplicity=2 → join_count += 2
+  key=2 -> trovata! multiplicity=2 -> join_count += 2
 
 Partizione 3:  S_3 = [3, 7],  countR = {3: 1, 7: 1}
-  key=3 → trovata! multiplicity=1 → join_count += 1
-  key=7 → trovata! multiplicity=1 → join_count += 1
+  key=3 -> trovata! multiplicity=1 -> join_count += 1
+  key=7 -> trovata! multiplicity=1 -> join_count += 1
 ```
 
 #### STEP 7 — Accumulazione
@@ -389,23 +389,23 @@ due volte (histogram + scatter) prima ancora di iniziare il join. Perché convie
 **Motivo 1 — Località di cache**:
 ```
 Senza partizionamento:
-  Hash table di R = NR entry → può essere ENORME
+  Hash table di R = NR entry -> può essere ENORME
   Ogni lookup durante il probe può causare un cache miss
   (la hash table non sta in L1/L2 cache)
 
 Con partizionamento in P partizioni:
-  Hash table di R_p ≈ NR/P entry → PICCOLA
+  Hash table di R_p ≈ NR/P entry -> PICCOLA
   Se scelgo P abbastanza grande, la hash table locale sta in L1/L2 cache
-  Ogni lookup è un cache hit → ordini di grandezza più veloce
+  Ogni lookup è un cache hit -> ordini di grandezza più veloce
 ```
 
 **Motivo 2 — Indipendenza tra partizioni**:
 ```
 Dopo il partizionamento, le P partizioni sono COMPLETAMENTE indipendenti.
-  → Non condividono dati
-  → Non servono lock/sincronizzazione
-  → Ogni partizione può essere processata da un thread diverso
-  → PARALLELISMO NATURALE (embarrassingly parallel)
+  -> Non condividono dati
+  -> Non servono lock/sincronizzazione
+  -> Ogni partizione può essere processata da un thread diverso
+  -> PARALLELISMO NATURALE (embarrassingly parallel)
 ```
 
 **Motivo 3 — Gestione della memoria**:
@@ -459,7 +459,7 @@ result.checksum2 += splitmix64(k ^ 0x9e3779b97f4a7c15ULL) * m;
 - Due checksum indipendenti (con diversi salt) riducono la probabilità di collisioni accidentali
 
 Se la versione parallela produce gli stessi `join_count`, `checksum1`, `checksum2` della
-versione sequenziale → la correttezza è verificata (con altissima probabilità).
+versione sequenziale -> la correttezza è verificata (con altissima probabilità).
 
 ### 1.8 Mappa concettuale: collegamento tra Modulo 1 e Modulo 2
 
@@ -468,7 +468,7 @@ versione sequenziale → la correttezza è verificata (con altissima probabilit�
 ║                         MODULO 1                                    ║
 ║   Hai implementato e ottimizzato UNA funzione:                      ║
 ║                                                                      ║
-║     compute_partition_id(key, P) → partition_id ∈ [0, P)            ║
+║     compute_partition_id(key, P) -> partition_id ∈ [0, P)            ║
 ║                                                                      ║
 ║   - Hash: XOR-fold + Fibonacci multiply-shift                       ║
 ║   - Varianti: plain (scalare), autovec (GCC), AVX2 (intrinsics)    ║
@@ -486,7 +486,7 @@ versione sequenziale → la correttezza è verificata (con altissima probabilit�
 ║   1. PARTIZIONAMENTO (chiama h(key) per OGNI record di R e S)      ║
 ║      │  • Histogram: h(key) per contare                             ║
 ║      │  • Scatter:   h(key) per riordinare                          ║
-║      │  → h(key) viene chiamata 2×(NR + NS) volte in totale        ║
+║      │  -> h(key) viene chiamata 2×(NR + NS) volte in totale        ║
 ║      │                                                               ║
 ║   2. JOIN LOCALE (non usa più h(key), lavora sulle partizioni)      ║
 ║      │  • Build: conta chiavi in R_p con hash table locale          ║
@@ -515,17 +515,17 @@ versione sequenziale → la correttezza è verificata (con altissima probabilit�
 │  (produce un array dove i record sono raggruppati per partizione) │
 │                                                                   │
 │    A.1  Histogram:   scansiona R, conta quanti record per        │
-│                      partizione → hist_R[P]                       │
+│                      partizione -> hist_R[P]                       │
 │                                                                   │
 │    A.2  Prefix Sum:  trasforma i conteggi in posizioni di inizio │
-│                      → begin_R[P]                                 │
+│                      -> begin_R[P]                                 │
 │                                                                   │
 │    A.3  Scatter:     riordina R nell'array di output,            │
 │                      piazzando ogni record nella posizione        │
 │                      corretta usando i cursori                    │
 │                                                                   │
 │  MACRO-FASE A': Partizionamento di S (identico)                   │
-│    → hist_S, begin_S, array S riordinato                          │
+│    -> hist_S, begin_S, array S riordinato                          │
 │                                                                   │
 ├───────────────────────────────────────────────────────────────────┤
 │                                                                   │
@@ -533,10 +533,10 @@ versione sequenziale → la correttezza è verificata (con altissima probabilit�
 │  (ogni partizione è INDIPENDENTE dalle altre)                     │
 │                                                                   │
 │    B.1  Build:  scansiona R_p, conta occorrenze di ogni key      │
-│                 → countR = {key: molteplicità}                    │
+│                 -> countR = {key: molteplicità}                    │
 │                                                                   │
 │    B.2  Probe:  scansiona S_p, per ogni record con chiave k:     │
-│                 se k ∈ countR → join_count += countR[k]           │
+│                 se k ∈ countR -> join_count += countR[k]           │
 │                                 checksum1 += hash(k) * countR[k] │
 │                                 checksum2 += hash'(k)* countR[k] │
 │                                                                   │
@@ -584,7 +584,7 @@ Scalability(p) = T_par(1) / T_par(p)
 ```
 S(p) ≤ 1 / (f + (1-f)/p)
 
-Per p → ∞:  S_max = 1/f
+Per p -> ∞:  S_max = 1/f
 ```
 - **Messaggio chiave**: anche il 5% di codice seriale limita lo speedup massimo a 20x
 
@@ -634,7 +634,7 @@ Le fasi di join locale per partizione sono **embarrassingly parallel**: nessuna 
 - **Statica** (block/cyclic): quando il workload è regolare (es: histogram, prefix sum, scatter)
 - **Dinamica** (on-demand/work-stealing): quando il workload è irregolare (es: join locale, dove partizioni diverse possono avere dimensioni molto diverse)
 
-> **Per il progetto**: le fasi di partizionamento (histogram, scatter) hanno workload regolare → block distribution. La fase di join locale potrebbe avere workload irregolare (partizioni di dimensioni diverse) → valutare distribuzione dinamica o block con granularità fine.
+> **Per il progetto**: le fasi di partizionamento (histogram, scatter) hanno workload regolare -> block distribution. La fase di join locale potrebbe avere workload irregolare (partizioni di dimensioni diverse) -> valutare distribuzione dinamica o block con granularità fine.
 
 ### 2.6 C++ Threads (Lezione 13 - C++ConcurrencyBasics)
 
@@ -691,7 +691,7 @@ g++ -O3 -std=c++20 file.cpp -o output -pthread
 **Come evitarlo**:
 ```cpp
 // Male: contatori adiacenti in memoria
-uint64_t counts[nthreads]; // i thread scrivono su counts[tid] → false sharing!
+uint64_t counts[nthreads]; // i thread scrivono su counts[tid] -> false sharing!
 
 // Bene: padding per separare le cache lines
 struct alignas(64) PaddedCounter { uint64_t value = 0; };
@@ -842,9 +842,9 @@ Prima di parallelizzare, devi capire ogni riga del codice. Ecco un walkthrough d
 const auto R = generate_relation(NR, seed, max_key);
 const auto S = generate_relation(NS, seed ^ 0xdeadebdecdeedef1ULL, max_key);
 ```
-- R e S usano **seed diverse** (XOR con costante) → non sono identiche
+- R e S usano **seed diverse** (XOR con costante) -> non sono identiche
 - Le chiavi sono generate con `splitmix64` e ridotte `mod max_key`
-- `max_key` controlla il range delle chiavi → più è piccolo rispetto a NR/NS, più duplicati ci sono
+- `max_key` controlla il range delle chiavi -> più è piccolo rispetto a NR/NS, più duplicati ci sono
 
 ### 5.2 Histogram
 
@@ -857,8 +857,8 @@ static std::vector<std::size_t> compute_histogram(const std::vector<Record>& rel
     return hist;
 }
 ```
-- Scansione lineare dell'intera relazione → `O(N)`
-- Scrive su `hist[pid]` → accesso random su un array piccolo (P entry)
+- Scansione lineare dell'intera relazione -> `O(N)`
+- Scrive su `hist[pid]` -> accesso random su un array piccolo (P entry)
 - **Parallelizzabile**: ogni thread può avere il suo istogramma locale, poi si fa un merge
 
 ### 5.3 Prefix Sum (Exclusive Scan)
@@ -876,7 +876,7 @@ static std::vector<std::size_t> exclusive_prefix_sum(const std::vector<std::size
 ```
 - Opera sull'histogram (P entry, tipicamente piccolo: 64, 128, 256...)
 - **Sequenziale per natura** (dipendenza loop-carried), ma su dati molto piccoli
-- Tempo trascurabile → **NON vale la pena parallelizzare**
+- Tempo trascurabile -> **NON vale la pena parallelizzare**
 
 ### 5.4 Scatter
 
@@ -894,9 +894,9 @@ static std::vector<Record> scatter_partitioned(const std::vector<Record>& rel,
     return out;
 }
 ```
-- Scansione lineare dei record → `O(N)`
+- Scansione lineare dei record -> `O(N)`
 - Scritture **random** nell'array output (dipende dalla partizione)
-- Il cursore `next[pid]` è condiviso → **ogni incremento è una dipendenza seriale**
+- Il cursore `next[pid]` è condiviso -> **ogni incremento è una dipendenza seriale**
 - **Attenzione**: parallelizzare lo scatter è il punto più delicato!
 
 ### 5.5 Join locale (Build + Probe)
@@ -919,7 +919,7 @@ for (std::size_t i = s_begin; i < s_end; ++i) {
     }
 }
 ```
-- Ogni partizione è **indipendente** dalle altre → parallelismo perfetto!
+- Ogni partizione è **indipendente** dalle altre -> parallelismo perfetto!
 - `std::unordered_map` è una scelta del codice di riferimento (hash table con chaining)
 - Il professore nota esplicitamente che si può sostituire con strutture più efficienti
 
@@ -1385,7 +1385,7 @@ done
 # Molte partizioni (più di threads)
 ./hashjoin_par -nr 1000000 -ns 1000000 -seed 1 -max-key 10000 -p 256 -t 4
 
-# Chiavi molto ripetute (max-key piccolo → molti duplicati)
+# Chiavi molto ripetute (max-key piccolo -> molti duplicati)
 ./hashjoin_par -nr 1000000 -ns 1000000 -seed 1 -max-key 10 -p 8 -t 4
 
 # Partizioni vuote (max-key << P)
@@ -1637,12 +1637,12 @@ lscpu | grep "CPU(s):"
 ┌─────────────────────────────────────────────────────────────┐
 │ PATTERN: Data Parallelism con Histogram locale              │
 │                                                             │
-│  Thread 0: scan block_0 → local_hist_0                      │
-│  Thread 1: scan block_1 → local_hist_1                      │
+│  Thread 0: scan block_0 -> local_hist_0                      │
+│  Thread 1: scan block_1 -> local_hist_1                      │
 │  ...                                                        │
-│  Thread k: scan block_k → local_hist_k                      │
+│  Thread k: scan block_k -> local_hist_k                      │
 │  BARRIER                                                    │
-│  Master:   merge local_hist_0..k → global_hist              │
+│  Master:   merge local_hist_0..k -> global_hist              │
 │                                                             │
 │  Complessità: O(N/k) per thread + O(P×k) merge             │
 │  Speedup atteso: ~k per N >> P×k                            │
@@ -1654,7 +1654,7 @@ lscpu | grep "CPU(s):"
 │  PRE: ogni thread t conosce local_hist[t][pid]              │
 │  PRE: offset[t][pid] calcolato da prefix sum cumulativo     │
 │                                                             │
-│  Thread t: scan block_t → out[offset[t][pid]++]             │
+│  Thread t: scan block_t -> out[offset[t][pid]++]             │
 │                                                             │
 │  Zero sincronizzazione! Regioni di scrittura non overlap.   │
 └─────────────────────────────────────────────────────────────┘
@@ -1667,7 +1667,7 @@ lscpu | grep "CPU(s):"
 │                                                             │
 │  Thread t: for each partizione assegnata:                   │
 │              Build hash table su R_p                         │
-│              Probe S_p → accumula risultato locale          │
+│              Probe S_p -> accumula risultato locale          │
 │  BARRIER                                                    │
 │  Reduce dei risultati locali                                │
 └─────────────────────────────────────────────────────────────┘

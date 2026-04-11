@@ -112,11 +112,16 @@ python3 analysis/plot_results.py --format pdf    # PDF for LaTeX
 ```
 
 Plots are written to `results/plots/`:
-- `strong_speedup.png` — Speedup vs. threads
-- `strong_efficiency.png` — Efficiency vs. threads
-- `weak_scaling.png` — Weak scaling efficiency
-- `phase_breakdown.png` — Stacked bar chart of phase timings
-- `phase_speedup.png` — Per-phase speedup
+  1. Strong scaling — Speedup vs threads (multiple problem sizes)
+  2. Strong scaling — Efficiency vs threads
+  3. Strong scaling — Absolute execution time
+  4. Weak scaling — WSE vs threads
+  5. Phase breakdown — Stacked bar chart
+  6. Phase breakdown — Per-phase speedup
+  7. Phase breakdown — Percentage composition
+  8. Partition sensitivity — Time vs P
+  9. Duplicate density — Impact of max_key
+ 10. Amdahl fit — Estimated serial fraction
 
 ## Parallelization Strategy
 

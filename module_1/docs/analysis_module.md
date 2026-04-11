@@ -8,8 +8,8 @@ Pipeline di analisi dei risultati: converte l'output testuale dei benchmark in C
 
 ```
 analysis/
-├── parse_results.py       # output testuale → CSV
-├── plot_results.py        # CSV → grafici PNG/PDF
+├── parse_results.py       # output testuale -> CSV
+├── plot_results.py        # CSV -> grafici PNG/PDF
 └── generate_test_data.sh  # benchmark locali per testare la pipeline
 ```
 
@@ -33,7 +33,7 @@ results/
 Il flusso è in 3 passi:
 
 ```
-benchmark binari  →  parse_results.py  →  plot_results.py
+benchmark binari  ->  parse_results.py  ->  plot_results.py
   (testo)              (CSV)               (grafici)
 ```
 
@@ -79,14 +79,14 @@ Nessun'altra dipendenza. Il backend matplotlib è `Agg` (non serve GUI), funzion
 
 | # | Nome | Cosa mostra | Perché è utile |
 |---|------|-------------|----------------|
-| 01 | `throughput_vs_N` | Throughput al variare di N, per implementazione | Mostra la **scalabilità**: come varia la performance con la dimensione dell'input. Per N grande il throughput cala → memory bandwidth bound |
+| 01 | `throughput_vs_N` | Throughput al variare di N, per implementazione | Mostra la **scalabilità**: come varia la performance con la dimensione dell'input. Per N grande il throughput cala -> memory bandwidth bound |
 | 02 | `throughput_vs_P` | Throughput al variare di P | Verifica che il numero di partizioni non influenzi significativamente le performance (lo shift è un'operazione a costo costante) |
-| 03 | `speedup_vs_N` | Speedup di autovec/AVX2 rispetto al baseline | Il grafico più importante per il report: quantifica il **guadagno** dalla vettorizzazione. Lo speedup cala per N grande → bottleneck sulla bandwidth |
+| 03 | `speedup_vs_N` | Speedup di autovec/AVX2 rispetto al baseline | Il grafico più importante per il report: quantifica il **guadagno** dalla vettorizzazione. Lo speedup cala per N grande -> bottleneck sulla bandwidth |
 | 04 | `speedup_vs_P` | Speedup al variare delle partizioni | Verifica che lo speedup sia stabile indipendentemente da P |
 | 05 | `time_vs_N` | Tempo mediano con barre di errore (stddev) | Mostra i tempi assoluti e la **variabilità** delle misurazioni |
 | 06 | `distribution_quality` | Rapporto max/atteso nella distribuzione hash | Verifica la **qualità della hash**: valori vicini a 1.0 = distribuzione uniforme |
 | 07 | `keyspace_sensitivity` | Throughput al variare del key_space | Mostra se i duplicati influenzano le performance (non dovrebbero, dato che la hash è compute-only senza branch) |
-| 08 | `cuda_breakdown` | Stacked bar: H→D / kernel / D→H | Il grafico chiave per CUDA: mostra che il **transfer domina** il tempo totale |
+| 08 | `cuda_breakdown` | Stacked bar: H->D / kernel / D->H | Il grafico chiave per CUDA: mostra che il **transfer domina** il tempo totale |
 | 09 | `cuda_vs_cpu` | Throughput GPU vs migliore CPU | Confronto diretto. Il kernel CUDA batte la CPU, ma end-to-end potrebbe perdere per i trasferimenti |
 | 10 | `summary_table` | Tabella riepilogativa come immagine | Riassunto numerico includibile direttamente nel report |
 

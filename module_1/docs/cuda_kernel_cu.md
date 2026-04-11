@@ -32,10 +32,10 @@ void partition_map_cuda(const uint64_t* __restrict__ keys,
   La GPU organizza i thread in blocchi. `blockIdx.x` è l'indice del blocco corrente (0, 1, 2, ...), `blockDim.x` è il numero di thread per blocco (256 nel nostro caso), `threadIdx.x` è l'indice del thread dentro il blocco (0..255). La formula dà un indice unico per ogni thread.
 
   Esempio con N=1000, blockDim=256:
-  - Blocco 0: thread 0-255 → idx 0-255
-  - Blocco 1: thread 0-255 → idx 256-511
-  - Blocco 2: thread 0-255 → idx 512-767
-  - Blocco 3: thread 0-255 → idx 768-1023
+  - Blocco 0: thread 0-255 -> idx 0-255
+  - Blocco 1: thread 0-255 -> idx 256-511
+  - Blocco 2: thread 0-255 -> idx 512-767
+  - Blocco 3: thread 0-255 -> idx 768-1023
 
 - **`if (idx < N)`**: l'ultimo blocco può avere più thread del necessario (nell'esempio sopra, i thread 1000-1023 del blocco 3 non devono fare nulla). Il guard evita accessi out-of-bounds.
 
@@ -112,20 +112,20 @@ I CUDA Events sono timestamp registrati sulla timeline della GPU. Sono molto pi�
 
 ```cpp
 CUDA_CHECK(cudaEventRecord(e0));                           // timestamp 0
-CUDA_CHECK(cudaMemcpy(d_keys, h_keys, ..., H2D));         // copia host → device
+CUDA_CHECK(cudaMemcpy(d_keys, h_keys, ..., H2D));         // copia host -> device
 CUDA_CHECK(cudaEventRecord(e1));                           // timestamp 1
 partition_map_cuda<<<nblocks, tpb>>>(...);                  // lancio kernel
 CUDA_CHECK(cudaEventRecord(e2));                           // timestamp 2
-CUDA_CHECK(cudaMemcpy(h_part_gpu, d_part, ..., D2H));     // copia device → host
+CUDA_CHECK(cudaMemcpy(h_part_gpu, d_part, ..., D2H));     // copia device -> host
 CUDA_CHECK(cudaEventRecord(e3));                           // timestamp 3
 CUDA_CHECK(cudaEventSynchronize(e3));                      // aspetta completamento
 ```
 
 Poi:
 ```cpp
-cudaEventElapsedTime(&h2d,  e0, e1);   // tempo H→D
+cudaEventElapsedTime(&h2d,  e0, e1);   // tempo H->D
 cudaEventElapsedTime(&kern, e1, e2);   // tempo kernel
-cudaEventElapsedTime(&d2h,  e2, e3);   // tempo D→H
+cudaEventElapsedTime(&d2h,  e2, e3);   // tempo D->H
 ```
 
 Il progetto richiede esplicitamente di riportare questi tre tempi separatamente. Questo perché per un kernel così semplice, il tempo di trasferimento PCIe domina il tempo totale — il kernel in sé è velocissimo.
@@ -156,9 +156,9 @@ La GPU ha un'aritmetica intera a 64 bit identica alla CPU (standard IEEE per gli
 
 ## Cosa aspettarsi nei risultati
 
-- **H→D transfer**: proporzionale a N×8 byte. Per N=100M → 800MB. Su PCIe 4.0 x16 (~25 GB/s) → ~32 ms.
+- **H->D transfer**: proporzionale a N×8 byte. Per N=100M -> 800MB. Su PCIe 4.0 x16 (~25 GB/s) -> ~32 ms.
 - **Kernel**: molto veloce, ordine di 1-5 ms per N=100M. La GPU ha migliaia di core e istruzioni native per mul64.
-- **D→H transfer**: proporzionale a N×4 byte = 400MB → ~16 ms.
+- **D->H transfer**: proporzionale a N×4 byte = 400MB -> ~16 ms.
 - **Totale end-to-end**: dominato dai trasferimenti (~50 ms), kernel trascurabile.
 
 Questo è un risultato atteso e interessante da discutere nel report: per kernel così semplici, la GPU è limitata dal trasferimento dati, non dal compute. Ha senso usarla solo se il kernel fosse più complesso o se i dati fossero già sulla GPU.

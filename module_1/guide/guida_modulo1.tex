@@ -100,7 +100,7 @@ module_1/
 ├── README.md                 # Istruzioni complete
 ├── include/common.hpp        # tipi, hash, keygen, timing, checksum, mmap
 ├── src/
-│   ├── plain.cpp             # C++ plain → baseline + autovec
+│   ├── plain.cpp             # C++ plain -> baseline + autovec
 │   ├── avx2.cpp              # AVX2 intrinsics + verifica integrata
 │   ├── cuda_kernel.cu        # CUDA con timing separati
 │   └── dataset_creator.cpp   # Generatore dataset binari
@@ -108,7 +108,7 @@ module_1/
 │   ├── run_bench.sh          # SLURM batch CPU (3 esperimenti)
 │   └── run_cuda.sh           # SLURM batch CUDA
 ├── analysis/
-│   ├── parse_results.py      # Parser output → CSV
+│   ├── parse_results.py      # Parser output -> CSV
 │   └── plot_results.py       # Generatore 16 grafici
 ├── results/                  # CSV, grafici, vec reports
 ├── report/                   # PDF report finale (3 pagine)

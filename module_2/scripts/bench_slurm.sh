@@ -21,7 +21,7 @@ echo "Node: $(hostname) | Cores: $(nproc) | CPU: $(lscpu | grep 'Model name' | s
 echo "Date: $(date)"
 echo ""
 
-SEED=42; MK=1000000; P=128; REPS=3
+SEED=42; MK=1000000; P=128; REPS=5
 
 # ════════════════════════════════════════════════
 echo "[1/5] Strong scaling..."

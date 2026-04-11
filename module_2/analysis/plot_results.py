@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-plot_results.py — Generate comprehensive report-ready plots for SPM Module 2.
+Generate report-ready plots for Module 2
 
 Reads CSV files from results/ and produces publication-quality plots in results/plots/.
 
@@ -75,7 +75,7 @@ def savefig(fig, name, outdir, fmt):
     path = outdir / f"{name}.{fmt}"
     fig.savefig(path, bbox_inches='tight', dpi=200 if fmt == 'png' else None)
     plt.close(fig)
-    print(f"  → {path}")
+    print(f"  -> {path}")
 
 
 # ════════════════════════════════════════════════════════════
@@ -104,6 +104,7 @@ def plot_strong_scaling(df, outdir, fmt):
 
     # ── 2. Efficiency ──
     fig, ax = plt.subplots()
+    ax.axvspan(16, max_t + 1, alpha=0.08, color='gray', label='HT regime ($p>16$)')
     ax.axhline(y=1.0, ls='--', color=C['ideal'], label='Ideal E=1')
     for idx, (nr, g) in enumerate(groups):
         threads    = g['threads'].values
@@ -115,6 +116,7 @@ def plot_strong_scaling(df, outdir, fmt):
     ax.set_ylabel('Efficiency  $E(p) = S(p) / p$')
     ax.set_title('Strong Scaling — Efficiency')
     ax.legend()
+    ax.set_xlim(0, max_t + 1)
     ax.set_ylim(0, 1.15)
     ax.yaxis.set_major_formatter(ticker.PercentFormatter(1.0))
     savefig(fig, 'strong_efficiency', outdir, fmt)
@@ -146,7 +148,7 @@ def plot_strong_scaling(df, outdir, fmt):
                 'speedup': sp, 'efficiency': sp / row['threads'],
             })
     pd.DataFrame(rows).to_csv(outdir / 'strong_summary.csv', index=False, float_format='%.4f')
-    print(f"  → {outdir / 'strong_summary.csv'}")
+    print(f"  -> {outdir / 'strong_summary.csv'}")
 
 
 # ════════════════════════════════════════════════════════════
@@ -160,11 +162,9 @@ def plot_weak_scaling(df, outdir, fmt):
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.5))
 
-    # WSE — adjust y-axis to accommodate super-linear points
+    # WSE
     wse_max = max(wse.max(), 1.0)
     ax1.axhline(y=1.0, ls='--', color=C['ideal'], label='Ideal WSE=1', linewidth=1.5)
-    ax1.fill_between([threads[0]-0.5, threads[-1]+0.5], 1.0, wse_max * 1.15,
-                     color='#E8F5E9', alpha=0.4, label='Super-linear region')
     ax1.plot(threads, wse, 'D-', color=C['orange'], label='Measured WSE', markersize=9, zorder=5)
     for i, (t, w) in enumerate(zip(threads, wse)):
         ax1.annotate(f'{w:.2f}', (t, w), textcoords='offset points',
@@ -197,6 +197,9 @@ def plot_weak_scaling(df, outdir, fmt):
 # 5-7. PHASE BREAKDOWN
 # ════════════════════════════════════════════════════════════
 def plot_phase_breakdown(df, outdir, fmt):
+    # Drop duplicate threads=1 row (seq baseline vs par-1): keep seq (row 0).
+    # Applies to all three plots (stacked bar, speedup, percentage).
+    df      = df.drop_duplicates(subset='threads', keep='first')
     phases  = ['histogram_R_ms', 'scatter_R_ms', 'histogram_S_ms', 'scatter_S_ms', 'join_local_ms']
     labels  = ['Histogram R', 'Scatter R', 'Histogram S', 'Scatter S', 'Join Local']
     colors  = [C['hist_R'], C['scat_R'], C['hist_S'], C['scat_S'], C['join']]
@@ -272,7 +275,7 @@ def plot_partition_sensitivity(df, outdir, fmt):
 # 9. DUPLICATE DENSITY
 # ════════════════════════════════════════════════════════════
 def plot_duplicate_density(df, outdir, fmt):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.5))
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7, 7))
 
     mk     = df['max_key'].values
     t_seq  = df['time_seq'].values * 1000
@@ -280,18 +283,22 @@ def plot_duplicate_density(df, outdir, fmt):
     sp     = df['time_seq'].values / df['time_par'].values
 
     ax1.plot(mk, t_seq, 'o-', color=C['blue'], label='Sequential')
-    ax1.plot(mk, t_par, 's-', color=C['orange'], label=f'Parallel (t={df["threads"].iloc[0]})')
-    ax1.set_xlabel('max_key (key range → duplicate density)')
+    ax1.plot(mk, t_par, 's-', color=C['orange'], label=f'Parallel (p={df["threads"].iloc[0]})')
+    ax1.set_xlabel('max\_key  (key range $\propto$ $1/$duplicate density)')
     ax1.set_ylabel('Execution Time (ms)')
     ax1.set_title('Impact of Duplicate Density')
     ax1.set_xscale('log')
     ax1.legend()
 
-    ax2.plot(mk, sp, 'D-', color=C['green'], markersize=9)
-    ax2.set_xlabel('max_key')
-    ax2.set_ylabel('Speedup')
+    ax2.plot(mk, sp, 'D-', color=C['green'], markersize=8)
+    for x, y in zip(mk, sp):
+        ax2.annotate(f'{y:.2f}×', (x, y), textcoords='offset points',
+                     xytext=(0, 8), ha='center', fontsize=8, color=C['green'])
+    ax2.set_xlabel('max\_key')
+    ax2.set_ylabel('Speedup $S(p)$')
     ax2.set_title('Speedup vs Duplicate Density')
     ax2.set_xscale('log')
+    ax2.set_ylim(0, sp.max() * 1.2)
 
     fig.tight_layout()
     savefig(fig, 'duplicate_density', outdir, fmt)
@@ -334,7 +341,7 @@ def plot_amdahl_fit(df, outdir, fmt):
     savefig(fig, 'amdahl_fit', outdir, fmt)
 
     if f_est is not None:
-        print(f"  Estimated serial fraction f = {f_est:.4f} → max speedup = {1/f_est:.1f}x")
+        print(f"  Estimated serial fraction f = {f_est:.4f} -> max speedup = {1/f_est:.1f}x")
 
 
 # ════════════════════════════════════════════════════════════
