@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.11.1)  11 APR 2026 17:36
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.11.1)  15 APR 2026 19:05
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -538,46 +538,68 @@ Underfull \hbox (badness 3503) in paragraph at lines 109--110
  []
 
 
-Underfull \vbox (badness 2744) has occurred while \output is active []
+Underfull \hbox (badness 1270) in paragraph at lines 147--148
+\T1/cmr/m/n/10 as the throughput-optimal value. Thread counts
+ []
 
 
 
-<../results/plots/strong_speedup.pdf, id=54, 613.69278pt x 398.43481pt>
+<../results/plots/strong_speedup.pdf, id=55, 613.69278pt x 405.24316pt>
 File: ../results/plots/strong_speedup.pdf Graphic file (type pdf)
 <use ../results/plots/strong_speedup.pdf>
 Package pdftex.def Info: ../results/plots/strong_speedup.pdf  used on input lin
-e 180.
-(pdftex.def)             Requested size: 242.59084pt x 157.49858pt.
-<../results/plots/strong_efficiency.pdf, id=55, 630.2076pt x 398.43481pt>
+e 188.
+(pdftex.def)             Requested size: 242.59084pt x 160.18987pt.
+<../results/plots/strong_efficiency.pdf, id=56, 630.2076pt x 405.24316pt>
 File: ../results/plots/strong_efficiency.pdf Graphic file (type pdf)
 <use ../results/plots/strong_efficiency.pdf>
 Package pdftex.def Info: ../results/plots/strong_efficiency.pdf  used on input 
-line 186.
-(pdftex.def)             Requested size: 242.59084pt x 153.37051pt.
-<../results/plots/weak_scaling.pdf, id=56, 999.59636pt x 388.10118pt>
+line 194.
+(pdftex.def)             Requested size: 242.59084pt x 155.99127pt.
+<../results/plots/weak_scaling.pdf, id=57, 999.59636pt x 388.10118pt>
 File: ../results/plots/weak_scaling.pdf Graphic file (type pdf)
 <use ../results/plots/weak_scaling.pdf>
 Package pdftex.def Info: ../results/plots/weak_scaling.pdf  used on input line 
-221.
+229.
 (pdftex.def)             Requested size: 420.81914pt x 163.3863pt.
 
-Overfull \hbox (4.40967pt too wide) in paragraph at lines 230--241
+Overfull \hbox (4.40967pt too wide) in paragraph at lines 238--249
  [] 
  []
 
-<../results/plots/phase_speedup.pdf, id=59, 611.30887pt x 398.43481pt>
+
+
+[2]
+<../results/plots/phase_speedup.pdf, id=94, 611.30887pt x 398.43481pt>
 File: ../results/plots/phase_speedup.pdf Graphic file (type pdf)
 <use ../results/plots/phase_speedup.pdf>
 Package pdftex.def Info: ../results/plots/phase_speedup.pdf  used on input line
- 246.
+ 254.
 (pdftex.def)             Requested size: 239.00298pt x 155.77805pt.
+
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
 
 
-[2]
-Underfull \vbox (badness 1755) has occurred while \output is active []
+
+
+[3 <../results/plots/strong_speedup.pdf> <../results/plots/strong_efficiency.pd
+f> <../results/plots/weak_scaling.pdf> <../results/plots/phase_speedup.pdf>]
+<../results/plots/amdahl_fit.pdf, id=423, 611.30887pt x 398.43481pt>
+File: ../results/plots/amdahl_fit.pdf Graphic file (type pdf)
+<use ../results/plots/amdahl_fit.pdf>
+Package pdftex.def Info: ../results/plots/amdahl_fit.pdf  used on input line 27
+7.
+(pdftex.def)             Requested size: 239.00298pt x 155.77805pt.
+
+Underfull \hbox (badness 1127) in paragraph at lines 278--278
+[]\T1/cmr/bx/n/9 Figure 4: |\T1/cmr/m/n/9 Am-dahl's law fit (fit com-puted on b
+oth
+ []
+
+
+LaTeX Warning: `h' float specifier changed to `ht'.
 
 
 
@@ -586,50 +608,39 @@ Underfull \vbox (badness 10000) has occurred while \output is active []
 
 
 
-[3 <../results/plots/strong_speedup.pdf> <../results/plots/strong_efficiency.pd
-f> <../results/plots/weak_scaling.pdf> <../results/plots/phase_speedup.pdf>]
-<../results/plots/amdahl_fit.pdf, id=419, 611.30887pt x 398.43481pt>
-File: ../results/plots/amdahl_fit.pdf Graphic file (type pdf)
-<use ../results/plots/amdahl_fit.pdf>
-Package pdftex.def Info: ../results/plots/amdahl_fit.pdf  used on input line 26
-7.
-(pdftex.def)             Requested size: 239.00298pt x 155.77805pt.
+[4 <../results/plots/amdahl_fit.pdf>]
 
-
-
-Underfull \hbox (badness 1694) in paragraph at lines 283--285
-\T1/cmr/m/n/10 The con-tin-u-ing im-prove-ment through HT threads
- []
-
-<../results/plots/partition_sensitivity.pdf, id=423, 618.33511pt x 398.43481pt>
+<../results/plots/partition_sensitivity.pdf, id=502, 618.33511pt x 398.43481pt>
 
 File: ../results/plots/partition_sensitivity.pdf Graphic file (type pdf)
 <use ../results/plots/partition_sensitivity.pdf>
 Package pdftex.def Info: ../results/plots/partition_sensitivity.pdf  used on in
-put line 295.
+put line 308.
 (pdftex.def)             Requested size: 239.00298pt x 154.00279pt.
 
-LaTeX Warning: `h' float specifier changed to `ht'.
+Underfull \hbox (badness 1122) in paragraph at lines 315--316
+\T1/cmr/m/n/10 dis-tinct keys keep the per-partition \T1/cmtt/m/n/10 FlatCountM
+ap
+ []
 
-<../results/plots/duplicate_density.pdf, id=425, 497.14232pt x 494.71951pt>
+<../results/plots/duplicate_density.pdf, id=504, 497.14232pt x 494.71951pt>
 File: ../results/plots/duplicate_density.pdf Graphic file (type pdf)
 <use ../results/plots/duplicate_density.pdf>
 Package pdftex.def Info: ../results/plots/duplicate_density.pdf  used on input 
-line 306.
+line 319.
 (pdftex.def)             Requested size: 239.00298pt x 237.83255pt.
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
 
 
-[4 <../results/plots/amdahl_fit.pdf>]
+[5 <../results/plots/partition_sensitivity.pdf>]
 
 
 
-[5
+[6
 
- <../results/plots/partition_sensitivity.pdf> <../results/plots/duplicate_densi
-ty.pdf>] (./report.aux)
+ <../results/plots/duplicate_density.pdf>] (./report.aux)
  ***********
 LaTeX2e <2024-11-01> patch level 2
 L3 programming layer <2025-01-18>
@@ -638,13 +649,13 @@ Package rerunfilecheck Info: File `report.out' has not changed.
 (rerunfilecheck)             Checksum: 074DF44CB34CF760623B25869973BCC2;566.
  ) 
 Here is how much of TeX's memory you used:
- 15355 strings out of 473190
- 241648 string characters out of 5715800
- 1008704 words of memory out of 5000000
- 38368 multiletter control sequences out of 15000+600000
+ 15358 strings out of 473190
+ 241680 string characters out of 5715800
+ 1012064 words of memory out of 5000000
+ 38369 multiletter control sequences out of 15000+600000
  577324 words of font info for 74 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 75i,11n,79p,1225b,1358s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 75i,11n,79p,1959b,1358s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb
 ></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb>
 </usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></
@@ -657,27 +668,28 @@ xlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/local/texli
 ve/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texliv
 e/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy6.pfb></usr/local/texlive/
 2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/local/texlive/20
-25/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.pfb></usr/local/texlive/2025
-/texmf-dist/fonts/type1/public/cm-super/sfbx0800.pfb></usr/local/texlive/2025/t
-exmf-dist/fonts/type1/public/cm-super/sfbx0900.pfb></usr/local/texlive/2025/tex
-mf-dist/fonts/type1/public/cm-super/sfbx1000.pfb></usr/local/texlive/2025/texmf
--dist/fonts/type1/public/cm-super/sfbx1200.pfb></usr/local/texlive/2025/texmf-d
-ist/fonts/type1/public/cm-super/sfbx1440.pfb></usr/local/texlive/2025/texmf-dis
-t/fonts/type1/public/cm-super/sfbx1728.pfb></usr/local/texlive/2025/texmf-dist/
-fonts/type1/public/cm-super/sfrm0600.pfb></usr/local/texlive/2025/texmf-dist/fo
-nts/type1/public/cm-super/sfrm0700.pfb></usr/local/texlive/2025/texmf-dist/font
-s/type1/public/cm-super/sfrm0800.pfb></usr/local/texlive/2025/texmf-dist/fonts/
-type1/public/cm-super/sfrm0900.pfb></usr/local/texlive/2025/texmf-dist/fonts/ty
-pe1/public/cm-super/sfrm1000.pfb></usr/local/texlive/2025/texmf-dist/fonts/type
-1/public/cm-super/sfrm1200.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/
-public/cm-super/sfti1000.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/pu
-blic/cm-super/sftt0800.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/publ
-ic/cm-super/sftt0900.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public
-/cm-super/sftt1000.pfb>
-Output written on report.pdf (5 pages, 642250 bytes).
+25/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/local/texlive/2025
+/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.pfb></usr/local/texlive/2025/t
+exmf-dist/fonts/type1/public/cm-super/sfbx0800.pfb></usr/local/texlive/2025/tex
+mf-dist/fonts/type1/public/cm-super/sfbx0900.pfb></usr/local/texlive/2025/texmf
+-dist/fonts/type1/public/cm-super/sfbx1000.pfb></usr/local/texlive/2025/texmf-d
+ist/fonts/type1/public/cm-super/sfbx1200.pfb></usr/local/texlive/2025/texmf-dis
+t/fonts/type1/public/cm-super/sfbx1440.pfb></usr/local/texlive/2025/texmf-dist/
+fonts/type1/public/cm-super/sfbx1728.pfb></usr/local/texlive/2025/texmf-dist/fo
+nts/type1/public/cm-super/sfrm0600.pfb></usr/local/texlive/2025/texmf-dist/font
+s/type1/public/cm-super/sfrm0700.pfb></usr/local/texlive/2025/texmf-dist/fonts/
+type1/public/cm-super/sfrm0800.pfb></usr/local/texlive/2025/texmf-dist/fonts/ty
+pe1/public/cm-super/sfrm0900.pfb></usr/local/texlive/2025/texmf-dist/fonts/type
+1/public/cm-super/sfrm1000.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/
+public/cm-super/sfrm1200.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/pu
+blic/cm-super/sfti1000.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/publ
+ic/cm-super/sftt0800.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public
+/cm-super/sftt0900.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/c
+m-super/sftt1000.pfb>
+Output written on report.pdf (6 pages, 662889 bytes).
 PDF statistics:
- 793 PDF objects out of 1000 (max. 8388607)
- 287 compressed objects within 3 object streams
- 55 named destinations out of 1000 (max. 500000)
+ 807 PDF objects out of 1000 (max. 8388607)
+ 295 compressed objects within 3 object streams
+ 57 named destinations out of 1000 (max. 500000)
  68 words of extra memory for PDF output out of 10000 (max. 10000000)
 

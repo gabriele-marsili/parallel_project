@@ -16,6 +16,6 @@ hashjoin_par_tsan: src/hashjoin_parallel.cpp include/*.hpp
 	$(CXX) -O1 -g -std=c++20 -fsanitize=thread -pthread $(INCLUDES) src/hashjoin_parallel.cpp -o $@
 
 clean:
-	rm -f hashjoin_seq hashjoin_par hashjoin_par_tsan
+	rm -f hashjoin_seq hashjoin_par hashjoin_par_tsan hashjoin_parallel
 
 .PHONY: all clean

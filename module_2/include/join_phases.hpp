@@ -25,6 +25,17 @@ static inline std::vector<std::size_t> exclusive_prefix_sum(const std::vector<st
     return begin;
 }
 
+// In-place variant: writes into a pre-allocated buffer of size hist.size().
+// No heap allocation — safe inside a noexcept barrier completion function.
+static inline void exclusive_prefix_sum_inplace(const std::vector<std::size_t>& hist,
+                                                 std::vector<std::size_t>& out) noexcept {
+    std::size_t running = 0;
+    for (std::size_t i = 0; i < hist.size(); ++i) {
+        out[i] = running;
+        running += hist[i];
+    }
+}
+
 
 /* FlatCountMap — open-addressing hash table with linear probing
 
@@ -51,7 +62,7 @@ struct FlatCountMap {
 
     std::vector<Slot> slots;
     std::uint32_t     mask; // slots.size() - 1 (power-of-two mask)
-    std::uint32_t     shift; // 64 - log2(slots.size())
+    std::uint32_t     shift; // unused — kept for struct alignment (16-byte FlatCountMap)
 
     explicit FlatCountMap(std::size_t r_count) {
         std::size_t n = 1;

@@ -24,7 +24,8 @@ Padded per-thread results avoid false sharing.
 Eliminates spawn/join overhead between phases (reducing O(p) overhead
 in the extended Amdahl's model with linear overhead term).
 
--> Compile: g++ -O3 -std=c++20 -Wall -Wextra -march=native -pthread -Iinclude src/hashjoin_parallel.cpp -o hashjoin_par
+-> Compile: g++ -O3 -std=c++20 -Wall -Wextra -pthread -Iinclude src/hashjoin_parallel.cpp -o hashjoin_par
+   (add -march=native when compiling on the target cluster node)
 -> Run: ./hashjoin_par -nr 10000000 -ns 20000000 -seed 42 -max-key 100000 -p 128 -t 8
 */
 
@@ -47,6 +48,7 @@ in the extended Amdahl's model with linear overhead term).
 #include "verifier.hpp"
 
 // Thread count heuristic:
+// k = min(kmax, ⌊min(N R, N S) / Tmin⌋)
 // Avoids oversubscription and prevents launching threads for tiny workloads.
 // min_items_per_thread: below this, a single thread is more efficient than
 // paying the thread coordination overhead.
@@ -72,7 +74,8 @@ out_R and out_S must be pre-allocated to size NR and NS respectively before the 
 */
 static JoinResult partitioned_hash_join_parallel(const std::vector<Record>& R,
                                                   const std::vector<Record>& S,
-                                                  std::uint32_t P, int nthreads,
+                                                  std::uint32_t P, 
+                                                  int nthreads,
                                                   PhaseTiming& timing,
                                                   std::vector<Record>& out_R,
                                                   std::vector<Record>& out_S) {
@@ -120,8 +123,8 @@ static JoinResult partitioned_hash_join_parallel(const std::vector<Record>& R,
                 for (int t = 0; t < nt; ++t)
                     for (std::uint32_t pid = 0; pid < P; ++pid)
                         global_hist_R[pid] += local_hists_R[t][pid];
-                // Prefix sum
-                global_begin_R = exclusive_prefix_sum(global_hist_R);
+                // Prefix sum (in-place — no allocation inside noexcept lambda)
+                exclusive_prefix_sum_inplace(global_hist_R, global_begin_R);
                 // Per-thread offsets for lock-free scatter
                 for (std::uint32_t pid = 0; pid < P; ++pid) {
                     std::size_t off = global_begin_R[pid];
@@ -141,7 +144,7 @@ static JoinResult partitioned_hash_join_parallel(const std::vector<Record>& R,
                 for (int t = 0; t < nt; ++t)
                     for (std::uint32_t pid = 0; pid < P; ++pid)
                         global_hist_S[pid] += local_hists_S[t][pid];
-                global_begin_S = exclusive_prefix_sum(global_hist_S);
+                exclusive_prefix_sum_inplace(global_hist_S, global_begin_S);
                 for (std::uint32_t pid = 0; pid < P; ++pid) {
                     std::size_t off = global_begin_S[pid];
                     for (int t = 0; t < nt; ++t) {

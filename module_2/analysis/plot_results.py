@@ -87,19 +87,24 @@ def plot_strong_scaling(df, outdir, fmt):
     # ── 1. Speedup ──
     fig, ax = plt.subplots()
     max_t = 0
+    all_threads = set()
     for idx, (nr, g) in enumerate(groups):
         threads  = g['threads'].values
         speedup  = g['time_seq'].values[0] / g['time_par'].values
         label    = f'NR={nr//1_000_000}M'
         ax.plot(threads, speedup, f'{SIZE_MARKERS[idx]}-', color=SIZE_COLORS[idx], label=label)
         max_t = max(max_t, threads.max())
+        all_threads.update(threads.tolist())
     ax.plot([1, max_t], [1, max_t], '--', color=C['ideal'], label='Ideal S(p)=p', zorder=0)
+    ax.axvspan(16, max_t + 1, alpha=0.05, color='gray')
     ax.set_xlabel('Number of Threads')
     ax.set_ylabel('Speedup  $S(p) = T_{seq} / T_{par}(p)$')
     ax.set_title('Strong Scaling — Speedup')
     ax.legend()
     ax.set_xlim(0, max_t + 1)
     ax.set_ylim(0, None)
+    ax.set_xticks(sorted(all_threads))
+    ax.tick_params(axis='x', rotation=45)
     savefig(fig, 'strong_speedup', outdir, fmt)
 
     # ── 2. Efficiency ──
@@ -119,6 +124,8 @@ def plot_strong_scaling(df, outdir, fmt):
     ax.set_xlim(0, max_t + 1)
     ax.set_ylim(0, 1.15)
     ax.yaxis.set_major_formatter(ticker.PercentFormatter(1.0))
+    ax.set_xticks(sorted(all_threads))
+    ax.tick_params(axis='x', rotation=45)
     savefig(fig, 'strong_efficiency', outdir, fmt)
 
     # ── 3. Absolute time ──
@@ -176,6 +183,7 @@ def plot_weak_scaling(df, outdir, fmt):
     ax1.set_ylim(0, wse_max * 1.2)
     ax1.set_xlim(0, threads[-1] + 1)
     ax1.yaxis.set_major_formatter(ticker.PercentFormatter(1.0))
+    ax1.set_xticks(threads)
 
     # Absolute time
     ax2.plot(threads, times * 1000, 's-', color=C['teal'], markersize=9)
@@ -188,6 +196,7 @@ def plot_weak_scaling(df, outdir, fmt):
     ax2.set_title('Weak Scaling — Execution Time')
     ax2.legend()
     ax2.set_xlim(0, threads[-1] + 1)
+    ax2.set_xticks(threads)
 
     fig.tight_layout()
     savefig(fig, 'weak_scaling', outdir, fmt)
