@@ -410,6 +410,30 @@ def plot_weak_scaling_compare(df1, df5, outdir, fmt):
 
 
 # ════════════════════════════════════════════════════════════
+# 11. P=512 vs P=128 COMPARISON
+# ════════════════════════════════════════════════════════════
+def plot_p512_comparison(df128, df512, outdir, fmt):
+    fig, ax = plt.subplots()
+    for df, P, color, marker in [(df128, 128, C['blue'], 'o'), (df512, 512, C['orange'], 's')]:
+        for idx, (nr, g) in enumerate(df.groupby('nr')):
+            threads = g['threads'].values
+            speedup = g['time_seq'].values[0] / g['time_par'].values
+            ls = '-' if idx == 0 else '--'
+            ax.plot(threads, speedup, f'{marker}{ls}', color=color,
+                    label=f'P={P}, NR={nr//1_000_000}M', alpha=0.85)
+    max_t = df128['threads'].max()
+    ax.plot([1, max_t], [1, max_t], '--', color=C['ideal'], label='Ideal', zorder=0, alpha=0.5)
+    ax.axvspan(16, max_t + 1, alpha=0.06, color='gray')
+    ax.set_xlabel('Number of Threads')
+    ax.set_ylabel('Speedup  $S(p)$')
+    ax.set_title('Strong Scaling — P=128 vs P=512')
+    ax.legend(fontsize=9)
+    ax.set_xlim(0, max_t + 1)
+    ax.set_ylim(0, None)
+    savefig(fig, 'strong_speedup_p512_compare', outdir, fmt)
+
+
+# ════════════════════════════════════════════════════════════
 # MAIN
 # ════════════════════════════════════════════════════════════
 def main():
@@ -437,6 +461,12 @@ def main():
             print("  (scipy not available — skipping Amdahl fit)")
     else:
         print(f"[!] {p} not found")
+
+    # P=512 vs P=128 comparison speedup
+    p512 = resdir / 'strong_scaling_p512.csv'
+    if p.exists() and p512.exists():
+        print("[11] P=512 vs P=128 comparison...")
+        plot_p512_comparison(pd.read_csv(p), pd.read_csv(p512), outdir, fmt)
 
     # Weak scaling
     p = resdir / 'weak_scaling.csv'
