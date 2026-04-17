@@ -243,6 +243,8 @@ def plot_phase_breakdown(df, outdir, fmt):
     ax.set_ylabel('Per-Phase Speedup')
     ax.set_title('Speedup by Phase')
     ax.legend()
+    ax.set_xticks(t_vals)
+    ax.tick_params(axis='x', rotation=45)
     savefig(fig, 'phase_speedup', outdir, fmt)
 
     # ── 7. Percentage composition ──
@@ -347,6 +349,8 @@ def plot_amdahl_fit(df, outdir, fmt):
     ax.legend()
     ax.set_xlim(0, threads.max() + 1)
     ax.set_ylim(0, None)
+    ax.set_xticks(threads.astype(int))
+    ax.tick_params(axis='x', rotation=45)
     savefig(fig, 'amdahl_fit', outdir, fmt)
 
     if f_est is not None:
