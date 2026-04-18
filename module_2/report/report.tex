@@ -52,17 +52,13 @@ A single team of $k$ threads is launched once and reused across all phases via \
 \[
   k = \min\!\left(k_{\max},\;\left\lfloor \min(NR, NS) \,/\, T_{\min} \right\rfloor\right)
 \]
-where $k_{\max}$ is the user-requested count and $T_{\min} = 8\,192$ records is the minimum per-thread work threshold. Below this threshold, the cost of barrier synchronisation and cache-line traffic between threads exceeds the parallelism gain: with $N < k \cdot T_{\min}$, each thread's scan completes in less time than the $O(k \cdot P)$ histogram-merge step executed by the barrier delegate, so synchronisation overhead dominates useful work. For $NR = 10^7$ and $k_{\max} = 20$ the formula gives $k = \min(20, 1220) = 20$; for a hypothetical tiny input of $NR = 10^4$ it would give $k = \min(20, 1) = 1$, falling back to single-threaded execution. This threshold is never reached in any of the benchmarks reported below ($NR \geq 10^6$), so all experiments run with the full requested thread count.
+where $k_{\max}$ is the user-requested count and $T_{\min} = 8\,192$ records is the minimum per-thread work threshold. Below this threshold, the cost of barrier synchronisation and cache-line traffic between threads exceeds the parallelism gain: with $N < k \cdot T_{\min}$, each thread's scan completes in less time than the $O(k \cdot P)$ histogram-merge step executed by the barrier delegate, so synchronisation overhead dominates useful work. This threshold is never reached in the benchmarks below ($NR \geq 10^6$), so all experiments run with the full requested thread count.
 
 \subsection*{Histogram (Phases 0 and 2)}
 
 Each thread processes a contiguous block of $\lceil N/k \rceil$ records from relation $R$ (or $S$), incrementing its own private histogram of size $P$. Thread-local histograms eliminate all write contention. After the barrier, the completion delegate merges the $k$ local histograms into a global one in $O(P \cdot k)$ time, then runs the prefix sum $O(P)$ and computes per-thread scatter offsets.
 
-Static block distribution yields good spatial locality: each thread reads a contiguous slice of the input array, maximising cache line utilisation. The dominant cost of this phase is a sequential scan of $N \times 8$\,B of input --- a purely memory-bandwidth-bound operation with very low arithmetic intensity ($I \approx 0.125$\,FLOP/byte). As a consequence, the histogram phase scales poorly with thread count (Section~\ref{sec:results}).
-
-\subsection*{Prefix Sum}
-
-The prefix sum over the $P$-element global histogram is performed sequentially by the barrier completion delegate. With $P \leq 1024$ this takes at most a few microseconds and represents a negligible fraction of total time ($< 0.1\%$ in all measurements). The theoretical span of a parallel prefix sum is $O(\log P)$, but the overhead of synchronising threads for such a small workload would dwarf any gain.
+Static block distribution yields good spatial locality: each thread reads a contiguous slice of the input array, maximising cache line utilisation. The dominant cost is a sequential scan of $N \times 8$\,B --- memory-bandwidth-bound ($I \approx 0.125$\,FLOP/byte), so the histogram phase scales poorly (Section~\ref{sec:results}). The prefix sum over the $P$-element global histogram is performed sequentially by the barrier delegate ($< 0.1\%$ of total time at $P \leq 1024$; parallelising it would not amortise synchronisation overhead).
 
 \subsection*{Scatter (Phases 1 and 3)}
 
@@ -86,7 +82,7 @@ Scatter is memory-bound (random writes driven by hash values), but the absence o
 
 \subsection*{Join Local (Phase 4)}
 
-Each partition can be joined independently: a flat open-addressing hash table \texttt{FlatCountMap} is built on the $R$ slice, then the $S$ slice is probed. This is an embarrassingly parallel workload. At the throughput-optimal $P=512$, each per-partition \texttt{FlatCountMap} occupies $\approx1$\,MB and is processed one at a time per thread; the table fits in the per-core L3, making this phase compute-bound (hash arithmetic and cache-resident lookups) rather than DRAM-bound. Partitions are distributed cyclically: thread $t$ owns partitions $t,\,t{+}k,\,t{+}2k,\ldots$, requiring neither scheduling logic nor atomics.
+Each partition can be joined independently: a flat open-addressing hash table \texttt{FlatCountMap} is built on the $R$ slice, then the $S$ slice is probed. This is an embarrassingly parallel workload. At the throughput-optimal $P=512$, each per-partition \texttt{FlatCountMap} occupies $\approx1$\,MB and is processed one at a time per thread; the table fits within the 20\,MB aggregate shared L3, making this phase compute-bound (hash arithmetic and cache-resident lookups) rather than DRAM-bound. Partitions are distributed cyclically: thread $t$ owns partitions $t,\,t{+}k,\,t{+}2k,\ldots$, requiring neither scheduling logic nor atomics.
 
 \noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}[language=C++,belowskip=0pt,aboveskip=3pt]
@@ -104,23 +100,6 @@ for (uint32_t pid = t; pid < P; pid += nt) {
 \end{minipage}
 
 For the Fibonacci partitioning hash, partition sizes are statistically near-equal, so cyclic assignment achieves the same load balance as LPT scheduling — with zero scheduling overhead. LPT would require sorting all $P$ partition sizes ($O(P\log P)$) before distribution; since sizes are near-uniform, that cost yields no benefit. Per-thread result accumulators are padded to 64 bytes (\texttt{alignas(64)}) to prevent false sharing. After the barrier, the main thread reduces the partial results.
-
-\subsection*{Summary}
-
-\begin{center}
-\small
-\begin{tabular}{@{}lll@{}}
-\toprule
-Phase & Strategy & Bottleneck \\
-\midrule
-Histogram   & Thread-local + merge & Memory BW \\
-Prefix Sum  & Sequential           & Negligible \\
-Scatter     & Lock-free offsets    & Memory BW \\
-Join Local  & Cyclic distribution  & Compute \\
-Accumulate  & Sequential           & Negligible \\
-\bottomrule
-\end{tabular}
-\end{center}
 
 % ===========================================================================
 \section{Correctness Verification}
@@ -177,7 +156,7 @@ seq & 1.00 & 100\% & & 1.00 & 100\% \\
 \bottomrule
 \end{tabular}
 \end{center}
-{\footnotesize Shaded rows: HT regime ($p>16$). $S(1)>1.0$: the sequential and parallel binaries are distinct executables with different startup and runtime overheads; their best-of-5 minimum timings can diverge systematically by up to $\approx4\%$ (observed: $+2.6\%$ for NR=10M, $+4.0\%$ for NR=20M). Within-run variance across the 5 repetitions is $\leq3\%$. The dip at $p=20$ relative to $p=16$ is a NUMA effect: threads crossing onto the second socket incur higher remote-memory latency (Section~\ref{sec:discussion}).}
+{\footnotesize Shaded: HT regime ($p>16$). $S(1)>1.0$: seq/par are distinct executables; best-of-5 minima diverge by $\leq4\%$ systematically (within-run variance $\leq3\%$). The dip at $p=20$ is a NUMA effect (Section~\ref{sec:discussion}).}
 
 \begin{figure*}[t]
   \centering
@@ -244,7 +223,7 @@ End-to-end    & 769\,ms &  6.7$\times$ &  7.2$\times$ &  8.7$\times$ &  8.8$\tim
 \bottomrule
 \end{tabular}
 \end{center}
-{\footnotesize Individual phase times from the pipeline's internal timer; $T_\text{seq}$ (769\,ms) is their sum at $p=1$. Output buffers (\texttt{out\_R}/\texttt{out\_S}) are pre-allocated before timing begins; end-to-end speedup uses this sum as baseline. The sequential merge of thread-local histograms and the prefix-sum computation ($O(P\cdot k)$, a few $\mu$s) are executed by the barrier delegate between phases and are \emph{not} included in any individual phase time; their contribution is negligible at the measured granularity. Note: the phase breakdown baseline (769\,ms) differs slightly from the strong scaling outer-timer baseline (766\,ms), which is measured by the dedicated scaling benchmark. The $p=1$ phase breakdown was measured twice (two consecutive diagnostic runs to verify stability: 769\,ms and 753\,ms); the first (higher) value is used as baseline, giving a conservative speedup estimate within the stated $\leq3\%$ run-to-run variance.}
+{\footnotesize Phase times from the internal timer; $T_\text{seq}=769$\,ms is their sum at $p=1$; output buffers pre-allocated before timing. Merge/prefix-sum ($O(P{\cdot}k)$, a few $\mu$s) runs between phases and is not counted in any phase. Baseline differs from the strong-scaling outer timer (766\,ms). Measured twice (769 and 753\,ms); the higher value is used, giving slightly optimistic speedup figures (within $\leq3\%$ run-to-run variance).}
 
 \begin{figure}[h]
   \centering
@@ -267,7 +246,7 @@ The efficiency drops from 70\% at $p=2$ to 27\% at $p=32$ (NR=10M). With the gra
 \textbf{Effect of partition count ($P=512$).} At the throughput-optimal $P=512$ (Partition Count Sensitivity subsection, below), the implementation achieves $11.4\times$ (NR=10M) and $11.5\times$ (NR=20M) speedup at $p=32$, with a fitted serial fraction $f\approx0.058$ ($S_\infty\approx17\times$). The reduction in $f$ relative to $P=128$ reflects smaller per-partition \texttt{FlatCountMap} tables that fit in L3, reducing the DRAM-bound component of the join phase. At $P=512$ the NUMA dip is entirely absent for NR=10M: speedup rises from $7.76\times$ at $p=16$ to $9.16\times$ at $p=20$, because finer partitioning keeps each \texttt{FlatCountMap} within the aggregate L3. For NR=20M the dip remains visible ($9.59\times \to 9.22\times$ from $p=16$ to $p=20$), confirming that the larger working set still generates significant NUMA traffic even at $P=512$. Notably, the dip magnitude ($\Delta S=0.37$) exceeds that at $P=128$ ($\Delta S=0.26$), indicating that finer partitioning does not reduce NUMA penalties for NR=20M.
 
 \textbf{Hyper-Threading regime ($p = 20$--$32$).}
-The phase breakdown reveals a counter-intuitive split at $p > 16$: scatter continues to improve (R+S combined: $9.7\times \to 13.7\times$ from $p=20$ to $p=32$) while join has a local maximum at $p=14$ ($8.4\times$), dips to $7.2\times$ at $p=20$ (HT onset), recovers to $8.7\times$ at $p=24$, then settles at $8.0\times$ at $p=32$. Scatter is memory-bandwidth-bound --- HT threads increase memory-level parallelism, so additional logical cores help. Join Local (hash-table lookups with \texttt{FlatCountMap}) is compute-bound: HT pairs share execution ports on the same physical core, so competing hash-lookup streams contend for ALU and L1/L2 resources rather than adding capacity. Overall, end-to-end speedup improves only moderately ($7.2\times \to 8.8\times$) because the join plateau offsets much of the scatter gain. The Join Local phase breakdown is measured from a single diagnostic run (not aggregated over repetitions), so the per-point fluctuation ($7.2\times \to 8.7\times \to 8.0\times$ across $p=20,24,32$) lies within typical single-run noise and should be read as a plateau trend rather than a monotone sequence. The qualitative split between a memory-bound scatter (steadily improving through the HT regime) and a compute-bound join (plateauing) is robust across repetitions of the end-to-end benchmark.
+The phase breakdown reveals a counter-intuitive split at $p > 16$: scatter continues to improve ($9.7\times \to 13.7\times$ from $p=20$ to $p=32$) while join peaks at $p=14$ ($8.4\times$), dips to $7.2\times$ at $p=20$ (HT onset), then fluctuates in the $7$--$9\times$ range. Scatter is memory-bandwidth-bound --- HT threads increase memory-level parallelism, so additional logical cores help. Join Local is compute-bound: HT pairs share execution ports, so competing hash-lookup streams contend for ALU resources rather than adding capacity. Overall, end-to-end speedup improves only moderately ($7.2\times \to 8.8\times$) because the join plateau offsets much of the scatter gain.
 
 \begin{figure}[h]
   \centering
@@ -280,7 +259,7 @@ The phase breakdown reveals a counter-intuitive split at $p > 16$: scatter conti
 
 The $p=1$ parallel binary takes $\approx 78$\,ms on NR=1M with negligible overhead from the barrier infrastructure. WSE $= T(1)/T(p)$ decreases monotonically: 0.74 at $p=2$, 0.54 at $p=10$, 0.33 at $p=32$ (Figure~\ref{fig:weak}).
 
-The primary cause is scatter: as the problem size grows proportionally with thread count, the random-write pattern of scatter generates an increasing volume of DRAM traffic that cannot be absorbed by more cores (bandwidth is shared, not replicated). Histogram and join scale somewhat better because their access patterns benefit from per-thread private structures (thread-local histograms) or fit within the aggregate L3 capacity at low thread counts (for $p\leq 2$ each per-partition \texttt{FlatCountMap} is $\leq 512$\,KB; at $p=4$ it reaches $\approx 1$\,MB --- in both cases well within the 20\,MB aggregate L3 (at most $p\times1$\,MB $\ll 20$\,MB)). WSE drops most sharply between $p=14$ and $p=20$ ($0.51\to 0.38$, $\Delta{=}0.13$), then levels off ($p=20\to 32$: $\Delta{=}0.05$). The step coincides with the transition into the HT regime and growing NUMA penalties: with two sockets, threads on the second socket typically access remote memory at appreciably higher latency.
+The primary cause is scatter: as problem size grows proportionally with thread count, the random-write pattern generates increasing DRAM traffic that more cores cannot absorb (bandwidth is shared, not replicated). Histogram and join scale better at low counts because thread-local histograms and per-partition \texttt{FlatCountMap} tables ($\leq1$\,MB each) fit within the 20\,MB shared L3 at $p\leq4$. WSE drops most sharply between $p=14$ and $p=20$ ($0.51\to 0.38$, $\Delta{=}0.13$), then levels off ($p=20\to 32$: $\Delta{=}0.05$), coinciding with HT onset and growing NUMA penalties.
 
 \medskip\noindent\textbf{Effect of partition count on weak scaling.} At the throughput-optimal $P=512$, weak scaling improves appreciably: $T(1)\approx90$\,ms (NR=1M), WSE$\,=0.45$ at $p=32$ versus $0.33$ at $P=128$---a $\approx35\%$ improvement in scaling efficiency; in absolute execution time at $p=32$ the gain is $\approx15\%$ ($238\to202$\,ms). The finer partitioning also produces a transient cache-benefit at $p=4$ (WSE$\,=0.87>$WSE$(p{=}2)=0.79$): more \texttt{FlatCountMap} tables fit within the aggregate L3, briefly improving efficiency before DRAM-bandwidth pressure dominates.
 
@@ -288,11 +267,11 @@ The primary cause is scatter: as the problem size grows proportionally with thre
 
 The three computational phases (Figure~\ref{fig:phase_sp}) scale very differently, and understanding why is central to the gap between the Amdahl prediction and the measured end-to-end speedup.
 
-Histogram is the weakest scaler ($2.4$--$3.1\times$ in the HT regime). Each thread performs one counter increment per 8-byte record, so the memory bus is the bottleneck regardless of core count. At $\approx6.6\%$ of sequential time (51\,ms of 769\,ms), histogram contributes a small but measurable fraction of the overall $f\approx0.078$.
+Histogram is the weakest scaler ($2.4$--$3.1\times$ in the HT regime): one counter increment per 8-byte record makes the memory bus the bottleneck regardless of core count; at $\approx6.6\%$ of total time it contributes a small but measurable share of $f\approx0.078$.
 
-Scatter dominates the sequential baseline ($\approx53\%$, 409\,ms of 769\,ms) and, unlike histogram, keeps improving through the HT regime ($9.7\to 13.7\times$ from $p=20$ to $p=32$). The lock-free design with pre-computed offsets eliminates contention entirely; the only limit is DRAM write bandwidth, and HT threads help here because they increase memory-level parallelism rather than competing for ALU resources.
+Scatter dominates the sequential baseline ($\approx53\%$, 409\,ms) and keeps improving through the HT regime ($9.7\to 13.7\times$ from $p=20$ to $p=32$): the lock-free design eliminates contention entirely, and HT threads increase memory-level parallelism rather than competing for ALU resources.
 
-The Join Local phase exhibits a contrasting scaling pattern. At $P=128$ with NR=10M, each per-partition \texttt{FlatCountMap} occupies $\approx4$\,MB (256K slots $\times$ 16\,B); with 20 threads active, the combined working set reaches $20\times 4\,\text{MB}=80$\,MB, far above the 20\,MB shared L3. The phase scales near-linearly up to $p=14$ ($8.4\times$) but then plateaus: HT pairs share execution ports on the same physical core, so adding logical threads does not add compute capacity. At the optimal $P=512$, each table shrinks to $\approx1$\,MB (64K slots) and the aggregate $\approx20$\,MB fits roughly within the shared L3, which explains the performance peak observed in the partition sensitivity analysis (Partition Count Sensitivity subsection, below).
+The Join Local phase exhibits a contrasting scaling pattern. At $P=128$ each per-partition \texttt{FlatCountMap} occupies $\approx4$\,MB; with 20 threads the aggregate (80\,MB) far exceeds the 20\,MB shared L3. The phase scales near-linearly to $p=14$ ($8.4\times$) then plateaus: HT pairs share execution ports, adding no compute capacity. At $P=512$ each table shrinks to $\approx1$\,MB and the aggregate fits in L3, explaining the performance peak (Partition Count Sensitivity subsection, below).
 
 \subsection*{Partition Count Sensitivity}
 \phantomsection\label{sec:partition}
@@ -308,7 +287,7 @@ With $P \in [16, 4096]$ (at $p=20$, NR=10M), execution time reaches a minimum at
 
 \subsection*{Duplicate Density}
 
-Sequential time is essentially constant for \texttt{max\_key} $\leq 100$K ($\approx 697$--$721$\,ms): with many duplicates, few distinct keys keep the per-partition \texttt{FlatCountMap} sparsely occupied and most probes terminate quickly. Speedup peaks at \texttt{max\_key}=$10$K ($7.5\times$), where key values distribute uniformly across $P=128$ partitions and per-partition tables are neither too sparse nor too densely populated. At \texttt{max\_key}=10M (near-unique keys) the hash table is fully populated, increasing sequential time by $+29\%$ ($\approx708$\,ms $\to 915$\,ms, relative to the peak-speedup point at \texttt{max\_key}=10K) while parallel execution time rises by $+42\%$ ($\approx 94$\,ms $\to 133$\,ms)---a larger relative increase---because at $P=128$ each per-partition \texttt{FlatCountMap} occupies $\approx4$\,MB, well above the per-core L3 share, so the working set remains DRAM-bound at any key density and the parallel version cannot exploit sparser table occupancy. As a result, speedup at \texttt{max\_key}=10M settles at $\approx6.9\times$, modestly below the $7.5\times$ peak, showing that the partitioned approach works well regardless of key distribution. At the optimal $P=512$, per-partition tables shrink to $\approx1$\,MB and can partially reside in L3 at near-unique densities, explaining the substantially higher speedup observed in that regime (Figure~\ref{fig:dup}).
+Sequential time is essentially constant for \texttt{max\_key} $\leq 100$K ($\approx 697$--$721$\,ms): with many duplicates, few distinct keys keep the per-partition \texttt{FlatCountMap} sparsely occupied and most probes terminate quickly. Speedup peaks at \texttt{max\_key}=$10$K ($7.5\times$), where key values distribute uniformly across $P=128$ partitions and per-partition tables are neither too sparse nor too densely populated. At \texttt{max\_key}=10M (near-unique keys) the hash table is fully populated, increasing sequential time by $+29\%$ ($\approx708$\,ms $\to 915$\,ms, relative to the peak-speedup point at \texttt{max\_key}=10K) while parallel execution time rises by $+42\%$ ($\approx 94$\,ms $\to 133$\,ms)---a larger relative increase---because at $P=128$ each per-partition \texttt{FlatCountMap} occupies $\approx4$\,MB; with 20 active threads the aggregate working set ($20\times4$\,MB=80\,MB) far exceeds the 20\,MB shared L3, so the working set remains DRAM-bound at any key density and the parallel version cannot exploit sparser table occupancy. As a result, speedup at \texttt{max\_key}=10M settles at $\approx6.9\times$, modestly below the $7.5\times$ peak, showing that the partitioned approach works well regardless of key distribution. At the optimal $P=512$, per-partition tables shrink to $\approx1$\,MB and can partially reside in L3 at near-unique densities, explaining the substantially higher speedup observed in that regime (Figure~\ref{fig:dup}).
 
 \begin{figure}[h]
   \centering
