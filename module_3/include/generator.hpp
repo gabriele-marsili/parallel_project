@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <vector>
 #include "common_structs.hpp"
+#include "common.hpp"
+#include <set>
 
 // ------------------------------------------------------------
 // Deterministic pseudo-random generation (splitmix64)
@@ -33,6 +35,52 @@ static inline std::vector<Record> generate_relation(std::size_t n, std::uint64_t
         out[i].key = (max_key == 0) ? 0ULL : (r % max_key);
     }
     return out;
+}
+
+static inline std::vector<Record> generate_skewed_relation(
+    std::size_t n, 
+    std::uint64_t seed, //state
+    std::uint64_t max_key,
+    std::uint32_t P ,
+    double rho,
+    std::uint32_t hot_count
+){
+
+    //checks:
+    if (max_key == 0) max_key = 1; 
+    if (hot_count == 0) rho = 0.0; // Se non ci sono hot keys, disabilita lo skew
+
+    uint64_t state = seed;
+    std::set<part_t> hot_partitions;
+    std::vector<uint64_t> hot_keys;
+    unsigned shift = compute_shift(P);
+    std::vector<Record> out(n);
+
+    if (hot_count > (std::uint32_t)P) hot_count = (std::uint32_t)P;
+    while(hot_keys.size() < hot_count){
+        u_int64_t random_key = splitmix64_next(state) % max_key;
+        part_t partition = hash_key(random_key,shift);
+        if(!hot_partitions.contains(partition)){
+            hot_partitions.insert(partition);
+            hot_keys.push_back(random_key);            
+        }
+    }
+
+    // threshold in [0, 1000000) to match the modulo range
+    std::uint64_t threshold = static_cast<std::uint64_t>(rho * 1000000.0);
+
+    for (size_t i = 0; i < n; ++i){
+        if((splitmix64_next(state) % 1000000) < threshold){ //hot record
+            std::uint64_t random_index = splitmix64_next(state) % hot_count;
+            out[i].key = hot_keys[random_index];
+        }
+        else{ //cold record
+            out[i].key = splitmix64_next(state) % max_key;
+        }
+    }
+
+    return out;
+
 }
 
 #endif // GENERATOR_HPP

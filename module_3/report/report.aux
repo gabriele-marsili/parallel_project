@@ -1,0 +1,36 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Algorithm and OpenMP Strategies}{1}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Three-phase Structure}{1}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Loop-level Variant}{1}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Task Variant with LPT}{1}{subsection.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}Synchronisation and Memory Layout}{2}{subsection.2.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Skewed Workload}{2}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Validation}{2}{section.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Mean total time [s], $N_R{=}10^7$, $N_S{=}2\cdot 10^7$, $P{=}128$.}}{2}{table.caption.1}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{tab:strong}{{1}{2}{Mean total time [s], $N_R{=}10^7$, $N_S{=}2\cdot 10^7$, $P{=}128$}{table.caption.1}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Strong scaling. Speedup is $T(1)/T(p)$ averaged over three repetitions. The dashed line is the ideal.}}{2}{figure.caption.2}\protected@file@percent }
+\newlabel{fig:strong}{{1}{2}{Strong scaling. Speedup is $T(1)/T(p)$ averaged over three repetitions. The dashed line is the ideal}{figure.caption.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Experimental Evaluation}{2}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Setup}{2}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Strong Scaling}{2}{subsection.5.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Weak scaling. Efficiency is $T(1)/T(p)$ with the input scaled linearly with the thread count.}}{3}{figure.caption.3}\protected@file@percent }
+\newlabel{fig:weak}{{2}{3}{Weak scaling. Efficiency is $T(1)/T(p)$ with the input scaled linearly with the thread count}{figure.caption.3}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Phase breakdown for $T \in \{1,4,16\}$, uniform workload. Mod3 OpenMP (loop and task) on the left, Mod2 \texttt  {std::thread} on the right.}}{3}{figure.caption.4}\protected@file@percent }
+\newlabel{fig:breakdown}{{3}{3}{Phase breakdown for $T \in \{1,4,16\}$, uniform workload. Mod3 OpenMP (loop and task) on the left, Mod2 \texttt {std::thread} on the right}{figure.caption.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Weak Scaling}{3}{subsection.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Phase Breakdown}{3}{subsection.5.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Join time at $T=8$ across five schedule policies.}}{3}{figure.caption.5}\protected@file@percent }
+\newlabel{fig:schedule}{{4}{3}{Join time at $T=8$ across five schedule policies}{figure.caption.5}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Module 2 \texttt  {std::thread} versus Module 3 OpenMP, uniform input.}}{3}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:m2vsm3}{{5}{3}{Module 2 \texttt {std::thread} versus Module 3 OpenMP, uniform input}{figure.caption.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Schedule Sensitivity}{3}{subsection.5.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.6}Comparison with Module 2}{3}{subsection.5.6}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Module 2 \texttt  {std::thread} vs Module 3 OpenMP, uniform $N_R{=}10^7$, $N_S{=}2{\cdot }10^7$. The first row is the shared sequential baseline (0.767~s, mean of 3 runs). Mod2 speedups use $T_{\text  {seq}}/T(p)$ (so $T{=}1$ shows the std::thread one-worker overhead, $\sim $3\%); Mod3 speedups use each variant's own $T(1)\!\approx \!T_{\text  {seq}}$, which differs from $T_{\text  {seq}}$ by less than $0.2\%$.}}{4}{table.caption.7}\protected@file@percent }
+\newlabel{tab:m2}{{2}{4}{Module 2 \texttt {std::thread} vs Module 3 OpenMP, uniform $N_R{=}10^7$, $N_S{=}2{\cdot }10^7$. The first row is the shared sequential baseline (0.767~s, mean of 3 runs). Mod2 speedups use $T_{\text {seq}}/T(p)$ (so $T{=}1$ shows the std::thread one-worker overhead, $\sim $3\%); Mod3 speedups use each variant's own $T(1)\!\approx \!T_{\text {seq}}$, which differs from $T_{\text {seq}}$ by less than $0.2\%$}{table.caption.7}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Discussion}{4}{section.6}\protected@file@percent }
+\gdef \@abspage@last{4}

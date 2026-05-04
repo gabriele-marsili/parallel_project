@@ -1,0 +1,24 @@
+=== Validation started: Wed Apr 29 15:59:31 CEST 2026 ===
+mode=loop NR=1000000 NS=2000000 P=128 SEED=42
+
+--- workload=uniform  (reference = hashjoin_seq) ---
+  ref: checksum1=10469242352503850494 checksum2=1233383699977089334 join_count=3999876 
+  t=1   PASS
+  t=2   PASS
+  t=4   PASS
+  t=8   PASS
+  t=16  PASS
+
+--- workload=skewed  rho=0.9 hot=4  (reference = t=1 same mode) ---
+  ref: checksum1=5488816061053549960 checksum2=5632934136443096162 join_count=1390745 
+  t=1   PASS
+  t=2   PASS
+  t=4   PASS
+  t=8   PASS
+  t=16  PASS
+
+--- cross-mode: loop vs task  t=4  workload=uniform ---
+  PASS
+
+=== loop VALIDATION: ALL PASS ===
+

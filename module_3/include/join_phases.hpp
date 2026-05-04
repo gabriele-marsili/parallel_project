@@ -1,6 +1,7 @@
 #ifndef JOIN_PHASES_HPP
 #define JOIN_PHASES_HPP
 
+#include <cassert>
 #include <cstdint>
 #include <cstddef>
 #include <vector>
@@ -82,6 +83,7 @@ struct FlatCountMap {
 
     // Build phase: count occurrences of each R key
     void increment(std::uint64_t key) noexcept {
+        assert(key != ~0ULL); // sentinel value — would corrupt the table
         std::uint32_t h = slot_of(key);
         while (slots[h].key != ~0ULL && slots[h].key != key)
             h = (h + 1) & mask;
