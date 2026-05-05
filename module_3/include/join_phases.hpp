@@ -101,30 +101,32 @@ struct FlatCountMap {
 };
 
 
-// Local join on one partition (build + probe)
-// Build:  scan R_p -> FlatCountMap[key] = multiplicity
-// Probe:  scan S_p -> for each key, add FlatCountMap[key] matches
-static inline JoinResult join_one_partition(const PartitionedRelation& Rpart,
-                                            const PartitionedRelation& Spart,
-                                            std::uint32_t pid) {
-    JoinResult result{};
-
+// Build the per-partition hash table from R_p.
+// Heap-allocated so it can be shared by parallel probe sub-tasks (hot split).
+static inline FlatCountMap build_table(const PartitionedRelation& Rpart,
+                                       std::uint32_t pid) {
     const std::size_t r_begin = Rpart.begin[pid];
     const std::size_t r_end   = Rpart.end[pid];
-    const std::size_t s_begin = Spart.begin[pid];
-    const std::size_t s_end   = Spart.end[pid];
-
-    if (r_begin == r_end || s_begin == s_end) return result;
-
-    // Build phase
     FlatCountMap countR(r_end - r_begin);
     for (std::size_t i = r_begin; i < r_end; ++i)
         countR.increment(Rpart.data[i].key);
+    return countR;
+}
 
-    // Probe phase
-    for (std::size_t i = s_begin; i < s_end; ++i) {
+// Probe a contiguous sub-range [s_lo, s_hi) of S_p against an already-built
+// table. Software prefetch on the random-access slot read.
+static inline JoinResult probe_chunk(const FlatCountMap& tbl,
+                                     const PartitionedRelation& Spart,
+                                     std::size_t s_lo, std::size_t s_hi) {
+    JoinResult result{};
+    constexpr std::size_t PF_DIST = 8;
+    for (std::size_t i = s_lo; i < s_hi; ++i) {
+        if (i + PF_DIST < s_hi) {
+            const std::uint64_t k_next = Spart.data[i + PF_DIST].key;
+            __builtin_prefetch(&tbl.slots[tbl.slot_of(k_next)], 0, 0);
+        }
         const std::uint64_t key = Spart.data[i].key;
-        const std::uint32_t m   = countR.count(key);
+        const std::uint32_t m   = tbl.count(key);
         if (m) {
             result.join_count += m;
             result.checksum1  += splitmix64(key) * m;
@@ -132,6 +134,21 @@ static inline JoinResult join_one_partition(const PartitionedRelation& Rpart,
         }
     }
     return result;
+}
+
+// Local join on one partition (build + probe)
+static inline JoinResult join_one_partition(const PartitionedRelation& Rpart,
+                                            const PartitionedRelation& Spart,
+                                            std::uint32_t pid) {
+    const std::size_t r_begin = Rpart.begin[pid];
+    const std::size_t r_end   = Rpart.end[pid];
+    const std::size_t s_begin = Spart.begin[pid];
+    const std::size_t s_end   = Spart.end[pid];
+
+    if (r_begin == r_end || s_begin == s_end) return JoinResult{};
+
+    FlatCountMap countR = build_table(Rpart, pid);
+    return probe_chunk(countR, Spart, s_begin, s_end);
 }
 
 #endif // JOIN_PHASES_HPP

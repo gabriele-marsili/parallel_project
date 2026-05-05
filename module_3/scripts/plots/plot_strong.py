@@ -36,14 +36,13 @@ fig, axes = plt.subplots(1, 2, figsize=(8, 3.5), sharey=False)
 
 for ax, wl in zip(axes, workloads):
     threads_all = sorted(mean3["threads"].unique())
+    # Ideal line capped at 20 (physical cores) — beyond that SMT
+    # threads share cache bandwidth, so linear ideal is misleading.
+    ideal_x = [t for t in threads_all if t <= 20]
     ax.plot(
-        threads_all,
-        threads_all,
-        color="grey",
-        linestyle="--",
-        linewidth=1.0,
-        label="Ideal",
-        zorder=1,
+        ideal_x, ideal_x,
+        color="grey", linestyle="--", linewidth=1.0,
+        label="Ideal (≤20 cores)", zorder=1, alpha=0.6,
     )
 
     for impl_key, impl_label, color, ls, marker in impls:
@@ -92,7 +91,14 @@ for ax, wl in zip(axes, workloads):
     ax.tick_params(labelsize=9)
     ax.set_xticks(threads_all)
     ax.set_xticklabels([str(t) for t in threads_all])
-    ax.legend(fontsize=9)
+    ax.axvline(x=20, color="darkgray", linestyle=":", linewidth=1.0, zorder=0,
+               alpha=0.7)
+    ax.text(20, ax.get_ylim()[1] * 0.05, " 20 cores", fontsize=8,
+            color="dimgray", va="bottom", ha="left", style="italic")
+    # Tighten y-range to actual data extent
+    ymax = max(threads_all[-1] / 8.0, 13.0)  # at least 13 to give some headroom
+    ax.set_ylim(0, ymax)
+    ax.legend(fontsize=9, loc="upper left")
 
 fig.tight_layout()
 os.makedirs(REPORT_DIR, exist_ok=True)

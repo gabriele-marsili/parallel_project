@@ -1,6 +1,14 @@
 # Partitioned Hash Join with Duplicates — OpenMP Implementation
 
-Parallel partitioned hash join (uniform and skewed keys, with duplicates) implemented in C++20 with OpenMP. Two parallelism strategies: **loop-level** (`#pragma omp parallel for`) and **task-based** (`#pragma omp task` with LPT ordering).
+Parallel partitioned hash join (uniform and skewed keys, with duplicates) implemented in C++20 with OpenMP. Two parallelism strategies:
+
+- **Loop-level** — `#pragma omp parallel for schedule(dynamic,1)` over partitions, native `reduction` clause.
+- **Task-based** — `#pragma omp task` with Longest-Processing-Time (LPT) ordering, plus an **intra-partition probe split** (nested `taskgroup`) for hot partitions to bypass the structural `H/T` efficiency bound on skewed input.
+
+Targeted optimisations applied to both variants:
+- Software prefetching on the random-access stream of the scatter (12 iterations ahead) and probe (8 iterations ahead).
+- NUMA first-touch on the partition output buffers via `parallel for schedule(static)` zero-init.
+- Padded per-thread accumulators (`alignas(64)`) to eliminate false sharing in the task-mode reduction.
 
 ---
 

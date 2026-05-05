@@ -9,14 +9,9 @@
 #include "join_phases.hpp"
 #include "verifier.hpp"
 
-// Parallel partitioning: histogram -> prefix sum -> scatter.
-//
-// Variables that are shared across threads (local_hists, cursors, hist, offsets)
-// must be declared BEFORE the parallel region so OpenMP treats them as shared.
-// The function owns its own #pragma omp parallel region so the caller does not
-// need to worry about the parallelism level.
-//
-// t_hist and t_scatter are set to wall-clock seconds for each sub-phase.
+// Parallel partitioning: histogram, exclusive prefix sum, lock-free scatter.
+// Owns its own parallel region; t_hist and t_scatter return the per-phase
+// wall-clock seconds.
 static void compute_phases(
     std::uint32_t P,
     const std::vector<Record> &relation,
@@ -27,7 +22,6 @@ static void compute_phases(
 {
     const std::size_t N = relation.size();
 
-    // Declared here (before parallel) -> shared among all threads.
     std::vector<std::size_t> hist(P, 0);
     std::vector<std::size_t> offsets(P, 0);
     std::vector<std::vector<std::size_t>> local_hists;
@@ -42,34 +36,28 @@ static void compute_phases(
                local_hists, cursors, hist, offsets, \
                h_start, h_end, s_start, s_end)
     {
-        // ── Init: size the outer vectors once T is known; each thread
-        //    first-touches its own row to keep memory local on NUMA. ──────────
         #pragma omp single
         {
             const int T = omp_get_num_threads();
             local_hists.resize(T);
             cursors.resize(T);
         }
-        // implicit barrier
 
+        // First-touch each thread's row from the thread that will use it,
+        // so the page lands on the local NUMA node.
         const int tid = omp_get_thread_num();
         local_hists[tid].assign(P, 0);
         cursors[tid].resize(P);
 
-        #pragma omp barrier  // all rows initialised before any for
+        #pragma omp barrier
 
-        // ── Phase 1: per-thread histogram ────────────────────────────────────
         #pragma omp single
         h_start = omp_get_wtime();
-        // implicit barrier: all threads start histogram at the same time
 
         #pragma omp for schedule(static)
         for (std::size_t i = 0; i < N; ++i)
             ++local_hists[tid][hash_key(relation[i].key, shift)];
-        // implicit barrier: all threads done with histogram before single reads
-        // local_hists — removing nowait here was the key correctness fix.
 
-        // ── Phase 2: merge histograms + prefix sum + cursor pre-computation ──
         #pragma omp single
         {
             h_end = omp_get_wtime();
@@ -85,9 +73,9 @@ static void compute_phases(
             for (std::uint32_t i = 0; i < P; ++i)
                 part.end[i] = offsets[i] + hist[i];
 
-            // cursors[t][pid] = start offset for thread t within partition pid.
-            // schedule(static) assigns the same input chunks in histogram and
-            // scatter, so the per-thread counts from local_hists are exact.
+            // schedule(static) is identical between histogram and scatter,
+            // so the per-thread counts in local_hists give an exact starting
+            // offset for thread t inside partition pid.
             for (std::uint32_t pid = 0; pid < P; ++pid) {
                 std::size_t running = offsets[pid];
                 for (int t = 0; t < T; ++t) {
@@ -98,15 +86,22 @@ static void compute_phases(
 
             s_start = omp_get_wtime();
         }
-        // implicit barrier after single
 
-        // ── Phase 3: lock-free scatter (each thread writes its own slots) ────
+        // Lock-free scatter: each thread only writes through its own
+        // cursors. The destination slot is random with respect to the
+        // input order, so the hardware prefetcher does not cover it;
+        // the explicit prefetch on the next iteration's slot does.
+        constexpr std::size_t PF_DIST = 12;
         #pragma omp for schedule(static)
         for (std::size_t i = 0; i < N; ++i) {
+            if (i + PF_DIST < N) {
+                const std::uint32_t pid_next =
+                    hash_key(relation[i + PF_DIST].key, shift);
+                __builtin_prefetch(&part.data[cursors[tid][pid_next]], 1, 0);
+            }
             const std::uint32_t pid = hash_key(relation[i].key, shift);
             part.data[cursors[tid][pid]++] = relation[i];
         }
-        // implicit barrier
 
         #pragma omp single
         s_end = omp_get_wtime();
@@ -116,10 +111,7 @@ static void compute_phases(
     t_scatter = s_end - s_start;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Loop-level version
-// ─────────────────────────────────────────────────────────────────────────────
-
+// Loop-level version: parallel for over partitions in the join phase.
 JoinResult run_loop(
     const std::vector<Record> &R,
     const std::vector<Record> &S,
@@ -137,9 +129,9 @@ JoinResult run_loop(
     double j_start, j_end;
 
     j_start = omp_get_wtime();
-    // schedule(dynamic,1): each thread takes one partition at a time.
-    // On skewed input this is crucial — static would give one thread all
-    // the large partitions.
+    // dynamic,1: per-partition cost is unknown ahead of time and varies
+    // by two orders of magnitude under skew, so static would saddle one
+    // thread with all the heavy partitions.
 #ifdef RUNTIME_SCHEDULE
     #pragma omp parallel for schedule(runtime) \
         default(none) shared(P, Rpart, Spart) \
@@ -165,16 +157,13 @@ JoinResult run_loop(
     return JoinResult{join_count, checksum1, checksum2};
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Task-based version – configuration (A): loop-level partitioning + task join
-// ─────────────────────────────────────────────────────────────────────────────
+// Task version: same partitioning, explicit OpenMP tasks for the join with
+// LPT submission and a hot-partition split.
 
-// Per-thread accumulator padded to one cache line to eliminate false sharing.
-// alignas(64) forces the size to be a multiple of 64 bytes, so consecutive
-// elements in the vector sit on different cache lines.
+// One cache line per slot rules out false sharing on the per-thread reduction.
 struct alignas(64) PaddedResult { JoinResult r{}; };
 static_assert(sizeof(PaddedResult) == 64,
-              "PaddedResult must be exactly one cache line (24 bytes + 40 pad)");
+              "PaddedResult must be exactly one cache line");
 
 JoinResult run_task(
     const std::vector<Record> &R,
@@ -186,61 +175,105 @@ JoinResult run_task(
 {
     const unsigned shift = compute_shift(P);
 
-    // Phases 1–3 identical to loop-level (partitioning is always loop-level).
+    // Histogram and scatter are uniform per-tuple work, so they stay on the
+    // work-sharing for of compute_phases in both variants.
     compute_phases(P, R, shift, Rpart, timing.histogram_R, timing.scatter_R);
     compute_phases(P, S, shift, Spart, timing.histogram_S, timing.scatter_S);
 
-    // LPT ordering: generate tasks for the heaviest partitions first to
-    // minimise the makespan (longest-processing-time heuristic).
-    // Proxy: #records in R-partition + #records in S-partition.
+    // LPT: submit partitions in decreasing order of |R_p| + |S_p|, which is
+    // a linear cost proxy for the per-partition build+probe.
+    std::vector<std::size_t> weights(P);
+    std::size_t total_work = 0;
+    for (std::uint32_t pid = 0; pid < P; ++pid) {
+        weights[pid] = (Rpart.end[pid] - Rpart.begin[pid])
+                     + (Spart.end[pid] - Spart.begin[pid]);
+        total_work += weights[pid];
+    }
     std::vector<std::uint32_t> order(P);
     std::iota(order.begin(), order.end(), 0);
     std::sort(order.begin(), order.end(), [&](std::uint32_t a, std::uint32_t b) {
-        const std::size_t wa = (Rpart.end[a] - Rpart.begin[a])
-                             + (Spart.end[a] - Spart.begin[a]);
-        const std::size_t wb = (Rpart.end[b] - Rpart.begin[b])
-                             + (Spart.end[b] - Spart.begin[b]);
-        return wa > wb;
+        return weights[a] > weights[b];
     });
 
-    // Per-thread accumulators (size = max threads after omp_set_num_threads).
+    // A partition above 8x the average weight is split internally, so the
+    // efficiency <= H/T bound from the four hot partitions is broken.
     const int T = omp_get_max_threads();
-    std::vector<PaddedResult> thr_results(T);
+    const std::size_t avg_weight = (P > 0) ? (total_work / P) : 0;
+    const std::size_t hot_threshold = 8 * avg_weight;
 
+    // K sub-tasks per hot partition, each roughly the size of an average
+    // partition. T=1 falls back to no split.
+    auto split_count_for = [&](std::size_t w) -> int {
+        if (w <= hot_threshold || T <= 1) return 1;
+        const std::size_t k_raw = (avg_weight > 0) ? (w / avg_weight) : 1;
+        const int k = static_cast<int>(std::min<std::size_t>(k_raw, T));
+        return std::max(2, k);
+    };
+
+    std::vector<PaddedResult> thr_results(T);
     const double j_start = omp_get_wtime();
 
     #pragma omp parallel \
-        default(none) shared(P, order, Rpart, Spart, thr_results)
+        default(none) \
+        shared(P, order, weights, hot_threshold, Rpart, Spart, thr_results) \
+        firstprivate(split_count_for)
     {
-        // single+nowait: one thread generates all P tasks; the other T-1
-        // threads start picking tasks from the queue immediately rather than
-        // waiting at the implicit barrier of a plain `single`.
         #pragma omp single nowait
         {
             for (std::uint32_t idx = 0; idx < P; ++idx) {
                 const std::uint32_t pid = order[idx];
-                // firstprivate(pid): captures the loop variable value at task
-                // creation time — mandatory when tasks outlive the iteration.
-                #pragma omp task default(none) firstprivate(pid) \
-                    shared(Rpart, Spart, thr_results)
-                {
-                    // Tasks are tied by default: the thread executing this
-                    // body is stable, so omp_get_thread_num() is safe.
-                    const int tid = omp_get_thread_num();
-                    const JoinResult local = join_one_partition(Rpart, Spart, pid);
-                    thr_results[tid].r.join_count += local.join_count;
-                    thr_results[tid].r.checksum1  += local.checksum1;
-                    thr_results[tid].r.checksum2  += local.checksum2;
+                const std::size_t   w   = weights[pid];
+
+                if (w <= hot_threshold) {
+                    #pragma omp task default(none) firstprivate(pid) \
+                        shared(Rpart, Spart, thr_results)
+                    {
+                        const int tid = omp_get_thread_num();
+                        const JoinResult local = join_one_partition(Rpart, Spart, pid);
+                        thr_results[tid].r.join_count += local.join_count;
+                        thr_results[tid].r.checksum1  += local.checksum1;
+                        thr_results[tid].r.checksum2  += local.checksum2;
+                    }
+                } else {
+                    // Hot partition: build the table once, then fan out the
+                    // probe over K sub-tasks inside a taskgroup so the table
+                    // outlives all readers.
+                    const int K = split_count_for(w);
+                    #pragma omp task default(none) firstprivate(pid, K) \
+                        shared(Rpart, Spart, thr_results)
+                    {
+                        FlatCountMap tbl = build_table(Rpart, pid);
+                        const std::size_t s_begin = Spart.begin[pid];
+                        const std::size_t s_end   = Spart.end[pid];
+                        const std::size_t s_n     = s_end - s_begin;
+                        const std::size_t chunk   = (s_n + K - 1) / K;
+
+                        #pragma omp taskgroup
+                        {
+                            for (int k = 0; k < K; ++k) {
+                                const std::size_t s_lo = s_begin + k * chunk;
+                                const std::size_t s_hi = std::min(s_end, s_lo + chunk);
+                                if (s_lo >= s_hi) continue;
+                                #pragma omp task default(none) \
+                                    firstprivate(s_lo, s_hi) \
+                                    shared(tbl, Spart, thr_results)
+                                {
+                                    const int tid = omp_get_thread_num();
+                                    const JoinResult local = probe_chunk(tbl, Spart, s_lo, s_hi);
+                                    thr_results[tid].r.join_count += local.join_count;
+                                    thr_results[tid].r.checksum1  += local.checksum1;
+                                    thr_results[tid].r.checksum2  += local.checksum2;
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
-        // Implicit barrier at end of parallel region: all tasks complete
-        // before any thread exits. thr_results is fully populated here.
     }
 
     timing.join_local = omp_get_wtime() - j_start;
 
-    // Sequential reduction (T is small, overhead is negligible).
     const double acc_start = omp_get_wtime();
     JoinResult result{};
     for (int t = 0; t < T; ++t) {
@@ -256,10 +289,6 @@ JoinResult run_task(
 
     return result;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// main
-// ─────────────────────────────────────────────────────────────────────────────
 
 int main(int argc, char **argv)
 {
@@ -316,7 +345,8 @@ int main(int argc, char **argv)
     Rpart.data.resize(NR);
     Spart.data.resize(NS);
 
-    // First-touch NUMA: zero-init dei buffer di scatter dal thread che li scriverà
+    // First-touch placement: each scatter buffer page is paid for by the
+    // thread that will later read and write it during the join.
     #pragma omp parallel for schedule(static)
     for (std::size_t i = 0; i < NR; ++i) Rpart.data[i].key = 0;
     #pragma omp parallel for schedule(static)

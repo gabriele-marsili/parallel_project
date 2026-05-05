@@ -85,8 +85,10 @@ for ax, wl in zip(axes, workloads):
     ax.tick_params(labelsize=9)
     ax.set_xticks(threads_all)
     ax.set_xticklabels([str(t) for t in threads_all])
-    ax.set_ylim(0, 1.2)
-    ax.legend(fontsize=9)
+    ax.axvline(x=20, color="darkgray", linestyle=":", linewidth=1.0,
+               alpha=0.7, zorder=0)
+    ax.set_ylim(0, 1.15)
+    ax.legend(fontsize=9, loc="lower left" if wl == "skewed" else "upper right")
 
 fig.tight_layout()
 os.makedirs(REPORT_DIR, exist_ok=True)

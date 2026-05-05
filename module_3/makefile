@@ -35,7 +35,9 @@ tar:
 	@for d in results report tests; do \
 	    [ -d "$$d" ] && zip -r $(ZIPNAME) $$d/ \
 	        --exclude='*.aux' --exclude='*.log' --exclude='*.out' \
-	        --exclude='*.toc' --exclude='*.png' || true; \
+	        --exclude='*.toc' --exclude='*.png' \
+	        --exclude='*.fls' --exclude='*.fdb_latexmk' \
+	        --exclude='*.synctex.gz' || true; \
 	done
 	@echo "Package ready: $(ZIPNAME)"
 

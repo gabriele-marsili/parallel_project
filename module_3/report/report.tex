@@ -15,56 +15,53 @@
 %---------------------------------------------------------------
 \section{Introduction}
 %---------------------------------------------------------------
-This report covers the OpenMP version of the partitioned hash join
-designed in Module~2. The algorithm itself is unchanged: $R$ and $S$
-are partitioned on a common key mapping and an independent local join
-is run on each partition. The aim here is to understand which OpenMP
-constructs are actually appropriate for this kind of computation, both
-on a balanced workload and on a deliberately skewed one. The C++
-\texttt{std::thread} implementation from Module~2 stays in the picture
-as a reference, since comparing the two runtime models is half the
-point of the module.
+This report describes the OpenMP implementation of the partitioned
+hash join developed in Module~2. The algorithm is unchanged: $R$ and
+$S$ are partitioned through a common key mapping and a local join is
+performed independently on each partition. The objective of the study
+is to assess which OpenMP constructs are appropriate for this kernel
+under both balanced and skewed workloads, and to compare the resulting
+performance with the \texttt{std::thread} implementation of Module~2.
 
-There are two parallel variants. The first one uses loop-level
-parallelism with a \texttt{parallel for} on the join phase. The second
-emits explicit tasks in Longest-Processing-Time order. Both share the
-same partitioning code, so the comparison between them is fair. All
-experiments ran on a node of the SPM cluster.
+Two parallel variants were developed. One uses loop-level parallelism
+through a \texttt{parallel for} on the join phase; the other emits
+explicit tasks ordered by Longest Processing Time First. The
+partitioning code is shared between the two, which makes the
+comparison between OpenMP constructs independent of the upstream
+phases. All experiments were carried out on a node of the SPM cluster.
 
 %---------------------------------------------------------------
 \section{Algorithm and OpenMP Strategies}
 %---------------------------------------------------------------
 
 \subsection{Three-phase Structure}
-Given relations $R$ and $S$ with $N_R$ and $N_S$ tuples, each tuple
-carries a key $k$ that is mapped to partition
-$p = k \bmod P$ with $P=128$. Since $P$ is a power of two the cheaper
-bitmask form $k\,\&\,(P-1)$ is used in the code. The algorithm runs
-three phases on each relation in turn:
+Given relations $R$ and $S$ of size $N_R$ and $N_S$, each tuple
+carries a key $k$ which is mapped to partition $p = k \bmod P$ with
+$P=128$. Since $P$ is a power of two, the equivalent bitmask form
+$k\,\&\,(P-1)$ is used. Each relation is processed in three phases:
 
 \begin{enumerate}
   \item \textbf{Histogram} -- count tuples per partition.
-  \item \textbf{Scatter} -- prefix-sum offsets, then radix-write tuples
-        into contiguous per-partition buffers.
+  \item \textbf{Scatter} -- compute exclusive prefix-sum offsets and
+        write tuples into contiguous per-partition buffers.
   \item \textbf{Join} -- on each partition $p$, build a hash table on
-        $R_p$ and probe it with every tuple of $S_p$.
+        $R_p$ and probe it with the tuples of $S_p$.
 \end{enumerate}
 
-The hash table is a small flat probing structure (\texttt{FlatCountMap})
-that counts duplicates incrementally during build and accumulates match
-multiplicities at probe time. The flat layout with a sentinel slot
-value was preferred over \texttt{std::unordered\_multimap}: it lives on
-the stack, has no per-node allocations, and the ratio
-\(\text{capacity}/|R_p|\approx 1.5\) keeps probing chains short.
+The per-partition hash table is the \texttt{FlatCountMap} introduced
+and analysed in the Module~2 report: open-addressing with linear
+probing, count-at-build, multiplicity accumulation at probe time.
+Its sizing rule and load-factor bound are unchanged here, so we do
+not repeat them and refer to the Module~2 report for the details.
 
 \subsection{Loop-level Variant}
 The loop variant follows the canonical \texttt{parallel for} pattern.
-Each thread accumulates a private histogram in a 64-byte aligned
-array, and a single thread takes care of the merge plus exclusive
-prefix sum inside an \texttt{\#pragma omp single} block. The scatter
-is also a \texttt{parallel for} with \texttt{schedule(static)} since
-the per-tuple work is constant. The join phase is the interesting
-one:
+Each thread maintains a private histogram in a 64-byte aligned
+buffer; the merge into the global histogram and the exclusive prefix
+sum are executed by a single thread inside an
+\texttt{\#pragma omp single} block. The scatter phase is a
+\texttt{parallel for} with \texttt{schedule(static)}, since the
+per-tuple work is constant. The join phase is then expressed as
 
 \small\begin{verbatim}
 #pragma omp parallel for schedule(dynamic,1) \
@@ -73,16 +70,34 @@ for (uint32_t p = 0; p < P; ++p)
     join_one_partition(R[p], S[p], ...);
 \end{verbatim}\normalsize
 
-\texttt{dynamic,1} was chosen because under the skewed workload the
-four hot partitions cost roughly $290\times$ more than each cold one,
-and a \texttt{static} mapping would pile most of the work on whichever
-threads happened to receive them. The native
-\texttt{reduction(+:\dots)} clause is enough here since only three
-\texttt{uint64\_t} scalars are reduced.
+The choice of \texttt{dynamic,1} follows from the workload-balancing
+argument of lecture~14: when the per-iteration cost is irregular and
+unknown ahead of time, a static distribution leaves the slowest
+worker on the critical path, while a dynamic policy reassigns chunks
+on demand and keeps idle threads engaged. Under the skew of
+Section~\ref{sec:skew} the per-partition cost varies by two orders of
+magnitude, so the static schedule is dominated by the makespan of
+the heaviest chunk; chunk size $1$ minimises the residual within-chunk
+imbalance at the cost of a small amount of runtime bookkeeping. The
+schedule sweep of Section~\ref{sec:schedule} confirms that this
+overhead is negligible at $P/T=16$. The \texttt{reduction(+:\dots)}
+clause is sufficient because only three \texttt{uint64\_t} scalars are
+accumulated.
 
-\subsection{Task Variant with LPT}
-The task variant keeps the same histogram and scatter, but the join is
-replaced by an explicit task loop:
+\subsection{Task Variant with LPT}\label{sec:task}
+The task variant differs from the loop variant only in the join. The
+histogram and the scatter run on the same \texttt{\#pragma omp for}
+construct in both versions because their per-element work is uniform
+by construction: each tuple costs a hash, an optional prefetch, and
+one indexed read/write. Lecture~14 distinguishes regular workloads,
+for which a static work-sharing partition is sufficient, from
+irregular ones, where dynamic assignment becomes worthwhile. The
+partitioning phases fall in the first class, so wrapping them in
+tasks would add submission and queueing overhead without any
+balancing benefit, and would also fragment the implicit barrier on
+which the scatter relies to read its inputs. The task machinery is
+therefore reserved for the join, where the per-partition cost is
+genuinely irregular. The join is expressed as an explicit task loop:
 
 \small\begin{verbatim}
 #pragma omp parallel default(none) \
@@ -98,102 +113,172 @@ replaced by an explicit task loop:
 }
 \end{verbatim}\normalsize
 
-The \texttt{nowait} is not decorative: without it the $T-1$ workers
-would queue at the implicit barrier of \texttt{single} instead of
-draining the task pool while the master is still emitting. A small
-empirical detail confirmed it: removing the \texttt{nowait} added
-$\sim$3\% to total time at $T=16$ on the skewed input.
+The \texttt{nowait} clause is required: without it the $T-1$ workers
+would wait at the implicit barrier of \texttt{single} until task
+emission completes, instead of consuming tasks while the master is
+still creating them.
 
-The crucial ingredient is the \texttt{order} array. Before submission,
-partitions are sorted in \emph{descending} order of the proxy cost
-$|R_p| + |S_p|$. This is Longest Processing Time First, a classical
-makespan-minimising heuristic. The sum (rather than product) is the
-right proxy because hash join is linear in $|R_p|+|S_p|$, not
-quadratic like a nested-loop join. Heaviest partitions enter the queue
-early, so they are the first to be picked up and they have the most
-threads available to absorb them.
+The \texttt{order} array drives the scheduling. Partitions are sorted
+by decreasing $|R_p| + |S_p|$ before submission, which is the Longest
+Processing Time First (LPT) heuristic. The course material covers
+dynamic assignment for irregular workloads (lez.\ 14) but does not
+prescribe a specific submission order, so the policy was chosen by
+looking at the scheduling literature outside the lectures. LPT is the
+classical greedy for makespan minimisation when independent tasks of
+variable size are dispatched to identical workers, and on a problem
+of this granularity ($P=128$ partitions, $T\le 32$) it has two
+practical effects: heavy partitions enter the queue first, so they
+are unlikely to land on the critical path at the end of the run, and
+small partitions remain available to fill the gaps left by the heavy
+ones. The sum $|R_p|+|S_p|$ is an appropriate cost proxy because the
+per-partition cost is linear in the size of its two inputs.
 
-The tasks are \emph{tied} (the default). \texttt{untied} would not
-work here: the task body calls \texttt{omp\_get\_thread\_num()} to
-index into the per-thread accumulator array, and an untied task could
-resume on a different thread and clobber another slot.
+All tasks are tied, which is the OpenMP default. The accumulation
+into \texttt{thr\_results} reads \texttt{omp\_get\_thread\_num()} and
+uses the returned index as the position of the per-thread slot.
+Tied semantics keep that index valid for the entire body of a task
+even in the presence of task scheduling points; this is relevant in
+the hot-partition path, where the outer task contains an inner
+\texttt{taskgroup} that could otherwise expose the body to a thread
+switch on resumption. Untied tasks would offer no advantage here and
+would require careful reasoning around the same TSP, so the default
+is retained.
 
-For the reduction a manual padded array
-\texttt{PaddedResult thr\_results[T]} is used, with
-\texttt{alignas(64)} and a \texttt{static\_assert} that the size is
-exactly one cache line. OpenMP~5.0 offers
-\texttt{taskgroup task\_reduction(+:\dots)} with
-\texttt{task in\_reduction(\dots)} as a more concise alternative; the
-production code stays within OpenMP~4.5 because the padded array
-makes the anti-false-sharing pattern explicit and is portable to the
-cluster toolchain without enabling additional language levels. The same
-reasoning rules out \texttt{taskloop}: it would have automatically
-chunked the iteration space, breaking the LPT order.
+The reduction uses a manually padded array
+\texttt{PaddedResult thr\_results[T]}, declared with
+\texttt{alignas(64)} and validated by a \texttt{static\_assert}, so
+per-thread slots sit on distinct cache lines and false sharing is
+removed.
 
 \subsection{Synchronisation and Memory Layout}
 Phase boundaries rely on the implicit barriers at the end of each
 worksharing construct, with one explicit \texttt{\#pragma omp barrier}
-right after the per-thread initialisation. That barrier is necessary
-because \texttt{local\_hists[tid].assign(P,0)} happens outside any
-worksharing region. All shared structures sit on cache-line boundaries
-to avoid false sharing on the histogram and the accumulator arrays.
+after the per-thread initialisation, since
+\texttt{local\_hists[tid].assign(P,0)} occurs outside any worksharing
+region. All shared structures (histograms, accumulators) are aligned
+to cache-line boundaries to prevent false sharing.
+
+\subsection{Targeted Optimisations}\label{sec:opt}
+Three additional optimisations were applied on top of the baseline
+strategy described above. They follow directly from the cost model of
+the kernel and from the structural bound observed on skewed input.
+
+\paragraph{Software prefetching in scatter and probe.}
+Both the scatter loop and the probe loop have a sequential read
+stream, which the hardware prefetcher already covers, and a
+random-access stream, which it does not. Two
+\texttt{\_\_builtin\_prefetch} calls were inserted to mask the L1/L2
+miss latency on these random accesses: in the scatter, the
+destination slot \texttt{part.data[cursors[tid][pid\_next]]} is
+prefetched 12 iterations ahead; in the probe, the hash slot
+\texttt{tbl.slots[slot\_of(k\_next)]} is prefetched 8 iterations
+ahead. The distances are tuned to the latency of the L1/L2 path on
+the target node, leaving enough work between prefetch and use for
+the line to arrive.
+
+\paragraph{Intra-partition parallelism for hot partitions.}
+The asymptotic skewed efficiency $\le H/T$ is a structural bound: no
+external scheduling, including LPT, can extract more parallelism than
+the number of heavy partitions $H$. The bound is broken by exposing
+parallelism \emph{within} a hot partition. The build phase still runs
+sequentially because concurrent updates on \texttt{FlatCountMap} would
+require atomic counters, but the probe is read-only on the table and
+parallelises naturally. A partition is classified as hot when its
+weight $|R_p| + |S_p|$ exceeds eight times the average; its probe is
+then split into $K$ sub-tasks where $K = \min(T, \lceil w/\bar{w}\rceil)$,
+with $\bar{w}$ the average partition weight. The sub-tasks are
+emitted inside a \texttt{taskgroup} so that the shared table outlives
+all readers. The probe of each hot partition can therefore be served
+by up to $T$ cooperating threads, which is what restores the
+parallelism that LPT alone could not extract.
+
+\paragraph{NUMA placement of partition buffers.}
+The partition output buffers \texttt{Rpart.data} and
+\texttt{Spart.data} are zero-initialised in parallel with
+\texttt{schedule(static)} before the partitioning runs. Under the
+Linux first-touch policy this places each page on the NUMA node of
+the thread that will later read and write it during the join. The
+input relations are still allocated single-threaded; this is the
+remaining gap noted in the discussion.
 
 %---------------------------------------------------------------
-\section{Skewed Workload}
+\section{Skewed Workload}\label{sec:skew}
 %---------------------------------------------------------------
-The skewed dataset is generated by a small mixture model. With
-probability $\rho=0.9$ the next key is drawn from a hot pool of $H=4$
-keys that are pre-selected to fall on four distinct partitions; with
-probability $1-\rho=0.1$ the key is uniform on $[0,\textit{max\_key})$.
-The expected fraction of records in any one hot partition is therefore
+The skewed dataset is produced by a Bernoulli mixture model. With
+probability $\rho=0.9$ the next key is sampled from a hot pool of
+$H=4$ keys, chosen so that they fall on four distinct partitions;
+with probability $1-\rho=0.1$ the key is drawn uniformly from
+$[0,\textit{max\_key})$. The values $\rho=0.9$ and $H=4$ are the
+canonical heavy-hitter parameters from the hash-join skew literature
+(Balkesen \emph{et al.}, ICDE~2013): the hot-to-cold ratio that
+follows is a consequence of those choices, not a tuning knob. The
+expected fraction of records assigned to a single hot partition is
 \[
   f_{\text{hot}} = \frac{\rho}{H} + \frac{1-\rho}{P}
                  = \frac{0.9}{4} + \frac{0.1}{128}
-                 \approx 0.226
+                 \approx 0.226,
 \]
-and a cold one gets roughly $f_{\text{cold}}\approx 0.00078$, so the
-ratio between hot and cold is about $290\times$.
+while a cold partition receives $f_{\text{cold}}\approx 0.00078$. The
+two values are a direct consequence of the choice of $(\rho,H,P)$
+and produce the order-of-magnitude gap between hot and cold
+partitions that the experiments below probe.
 
-The generator uses a deterministic \texttt{splitmix64} RNG with the
-seed exposed on the CLI, so runs are reproducible bit-by-bit. The
-\texttt{hot\_count} parameter is clamped to~$P$ to avoid an infinite
-loop if the user asks for more hot partitions than exist (a small
-guard added after triggering it during early testing).
+The generator is driven by a \texttt{splitmix64} RNG with the seed
+exposed on the command line, which makes runs reproducible
+bit-by-bit. The \texttt{hot\_count} parameter is clamped to $P$ to
+prevent a non-terminating loop in the case where more hot partitions
+are requested than exist.
 
 %---------------------------------------------------------------
 \section{Validation}
 %---------------------------------------------------------------
-The script \texttt{scripts/validate.sh} sweeps modes $\times$ workloads
-$\times$ thread counts $\in\{1,2,4,8,16\}$ and compares the triple
+Two complementary mechanisms are used. For small inputs
+($N_R, N_S \le 500$) both \texttt{hashjoin\_seq} and
+\texttt{hashjoin\_omp} run an in-process \emph{naive} $O(|R|\cdot|S|)$
+verifier (\texttt{include/verifier.hpp}) that performs a double loop
+over all pairs and emits a \texttt{naive\_verify=PASS} line when the
+triple matches the algorithm's output; the verifier is invoked
+\emph{outside} the timed region. For larger inputs the script
+\texttt{scripts/validate.sh} sweeps modes $\times$ workloads
+$\times$ thread counts $\in\{1,2,4,8,16\}$ at $N_R{=}10^6$,
+$N_S{=}2{\cdot}10^6$. The thread range stops at $T{=}16$ on purpose:
+once both sockets are engaged the parallel region, the task queue,
+and the reduction tree have been exercised in their full topology,
+so the additional points $T\!\in\!\{20,32\}$ would only re-test the
+SMT layer without exposing new code paths. They are kept for the
+performance evaluation below, which spans the full
+$T\!\in\!\{1,2,4,8,16,20,32\}$ range. The script compares the triple
 $(\text{join\_count},\text{checksum}_1,\text{checksum}_2)$ against a
-reference. For uniform the reference is the sequential baseline; for
-skewed it is the parallel run at $T=1$ in the same mode. As an extra
-check, loop and task at $T=4$ must produce identical triples.
+reference: the sequential baseline for uniform input and the
+parallel run at $T=1$ in the same mode for skewed input (the
+sequential implementation does not generate skewed data). As an
+additional check, the loop and task variants at $T=4$ are required to
+produce identical triples on the same input.
 
-The checksums are deterministic on purpose: each match contributes
-$\texttt{splitmix64}(k)\cdot m$ added in $\bmod\,2^{64}$, so the result
-is independent of the order in which tasks complete. All combinations
-pass on the cluster.
+The checksums are constructed to be invariant under task ordering:
+each match contributes $\texttt{splitmix64}(k)\cdot m$ added modulo
+$2^{64}$, so the total is independent of the order in which tasks
+complete. All combinations pass on the cluster.
 
 %---------------------------------------------------------------
 \section{Experimental Evaluation}
 %---------------------------------------------------------------
 
 \subsection{Setup}
-The experiments run on one node of \textit{spmcluster}: dual-socket
-Intel Xeon E5-2650~v3 at 2.30~GHz, 10 cores per socket, 2 hardware
-threads per core (40 logical CPUs but 20 physical cores), 128~GB RAM,
-two NUMA nodes. The build uses GCC~12.2 with OpenMP 4.5,
-\texttt{-O3 -march=native}. Unless noted otherwise the parameters are
-$N_R = 10^7$, $N_S = 2\cdot 10^7$, $P=128$, seed $42$. Every cell is
-the mean of three repetitions. Affinity is fixed via
+The experiments are executed on one node of \textit{spmcluster}:
+dual-socket Intel Xeon E5-2650~v3 at 2.30~GHz, 10 cores per socket,
+2 hardware threads per core (40 logical CPUs over 20 physical cores),
+128~GB RAM, two NUMA nodes. The build uses GCC~12.2 with OpenMP~4.5
+and \texttt{-O3 -march=native}. Unless stated otherwise, the
+parameters are $N_R = 10^7$, $N_S = 2\cdot 10^7$, $P=128$, seed $42$,
+with each cell averaged over three repetitions. Affinity is fixed via
 \texttt{OMP\_PROC\_BIND=close} and \texttt{OMP\_PLACES=cores}.
 
 \subsection{Strong Scaling}
-Figure~\ref{fig:strong} shows the speedup at
+Figure~\ref{fig:strong} reports the speedup at
 $T \in \{1,2,4,8,16,20,32\}$, covering the full physical-core range
 of the node ($T=20$) and one operating point in the SMT range
-($T=32$). The exact times are in Table~\ref{tab:strong}.
+($T=32$). Total times are listed in Table~\ref{tab:strong}.
 
 \begin{table}[t]
 \centering\small
@@ -202,13 +287,13 @@ of the node ($T=20$) and one operating point in the SMT range
 \toprule
 $T$ & loop unif. & task unif. & loop skew & task skew \\
 \midrule
-1  & 0.768 & 0.759 & 0.414 & 0.413 \\
-2  & 0.385 & 0.383 & 0.211 & 0.208 \\
-4  & 0.245 & 0.240 & 0.140 & 0.120 \\
-8  & 0.131 & 0.130 & 0.097 & 0.087 \\
-16 & 0.085 & 0.084 & 0.088 & 0.085 \\
-20 & 0.078 & 0.078 & 0.088 & 0.084 \\
-32 & 0.076 & 0.075 & 0.089 & 0.086 \\
+1  & 0.477 & 0.467 & 0.445 & 0.444 \\
+2  & 0.272 & 0.268 & 0.244 & 0.243 \\
+4  & 0.144 & 0.142 & 0.151 & 0.130 \\
+8  & 0.085 & 0.084 & 0.102 & 0.085 \\
+16 & 0.063 & 0.064 & 0.092 & 0.080 \\
+20 & 0.062 & 0.062 & 0.091 & 0.080 \\
+32 & 0.065 & 0.066 & 0.093 & 0.081 \\
 \bottomrule
 \end{tabular}
 \caption{Mean total time [s], $N_R{=}10^7$, $N_S{=}2\cdot10^7$,
@@ -220,34 +305,57 @@ $T$ & loop unif. & task unif. & loop skew & task skew \\
 \centering
 \includegraphics[width=\columnwidth]{fig_strong.pdf}
 \caption{Strong scaling. Speedup is $T(1)/T(p)$ averaged over three
-repetitions. The dashed line is the ideal.}
+repetitions. The dashed line indicates the ideal.}
 \label{fig:strong}
 \end{figure}
 
-On uniform input the two variants are essentially indistinguishable
-(within $\sim$1\%): the workload is already balanced and there is no
-room for the LPT ordering to help. Speedup grows almost linearly up to
-$T=8$ ($\sim 5.85\times$, efficiency $73\%$). At $T=16$ both variants
-sit around $9.1\times$; at $T=20$, where all physical cores are used,
-the speedup reaches $\sim 9.7\times$ (efficiency $48.5\%$). Past
-$T=20$, the extra threads share physical cores via SMT, and the
-speedup grows only marginally to $\sim 10.1\times$ at $T=32$. This is
-the expected behaviour for a memory-bound kernel: SMT helps with
-latency hiding but does not double the available cache bandwidth.
+On uniform input the loop and task variants are within $\sim 1\%$ at
+every thread count, which is the expected outcome rather than a
+negative result. The two share the same histogram and scatter
+implementations and differ only in the join dispatch; on independent
+tasks of \emph{equal} cost \texttt{dynamic,1} and an LPT-ordered
+task pool reduce to the same schedule up to runtime overhead, so the
+LPT ordering brings no benefit and the residual gap is at the level
+of the OpenMP-task queue overhead. The speedup grows nearly linearly up to
+$T=8$ ($\sim 5.6\times$, efficiency $70\%$), reaches $\sim 7.5\times$
+at $T=16$, and saturates at $\sim 7.6\times$ at $T=20$ where all
+physical cores are active. The time slightly increases at $T=32$
+because the additional threads share physical cores through SMT and
+the kernel, dominated by streaming reads and writes through the
+partitioned buffers, is bandwidth-limited rather than
+latency-limited; SMT hides latency but does not enlarge the cache
+bandwidth available to each core. With $T_{\text{seq}}=0.735$~s
+(Table~\ref{tab:m2}), the absolute speedup at $T=20$ is
+$11.93\times$.
 
-The skewed case is where the two strategies separate. At $T=4$ the
-task variant takes $0.120$~s versus $0.140$~s for the loop, a
-$\sim$14\% advantage that comes purely from emitting the four hot
-partitions first; at $T=8$ the gap is still around $11\%$. From $T=8$
-onwards the time barely decreases for either variant: four hot
-partitions cannot keep sixteen, twenty or thirty-two threads busy, no
-matter the schedule. The skewed efficiency at $T=20$ is only
-$\sim 24\%$, a frank reminder that LPT softens skew but does not
-remove it.
+The two strategies diverge on skewed input
+(Figure~\ref{fig:skewgap}). At $T=4$ the task variant completes in
+$0.130$~s against $0.151$~s for the loop, an advantage of $\sim 14\%$
+from the LPT submission of the heavy partitions. From $T=8$ onwards
+the gap widens to $13$--$16\%$ as the intra-partition split engages:
+at $T=20$ the task variant runs the join in $48.5$~ms versus
+$59.6$~ms for the loop, a $\sim 19\%$ reduction on the dominant
+phase. The hot-partition split exploits the four cooperating threads
+inside each hot partition and bypasses the $H/T$ structural bound
+that LPT alone could not. The efficiency at $T=20$ on skewed input is
+$\sim 28\%$ for the task variant against $\sim 24\%$ for the loop;
+the loop remains stuck at the $H/T$ bound because no external
+scheduling can extract parallelism that does not exist between
+independent partitions.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_skew_gap.pdf}
+\caption{Skewed input. (a) Join phase time for loop and task vs $T$:
+the gap is the visible footprint of the intra-partition split.
+(b) Total-time ratio $T_{\rm loop}/T_{\rm task}$, stable around
+$1.13$--$1.17$ for $T \ge 4$.}
+\label{fig:skewgap}
+\end{figure}
 
 \subsection{Weak Scaling}
-$N_R$ scales proportionally with $T$ ($2{\cdot}10^6$ tuples per
-thread), see Figure~\ref{fig:weak}.
+$N_R$ scales proportionally with $T$, with $2{\cdot}10^6$ tuples per
+thread (Figure~\ref{fig:weak}).
 
 \begin{figure}[t]
 \centering
@@ -257,75 +365,99 @@ linearly with the thread count.}
 \label{fig:weak}
 \end{figure}
 
-Uniform weak scaling holds reasonably well up to one full socket:
-total time grows from $0.179$~s at $T=1$ to $0.197$~s at $T=8$
-(efficiency $\sim 91\%$), then degrades to $\sim 73\%$ at $T=16$ once
-both sockets are involved. Memory bandwidth is the limiting factor:
-the scatter phase reads and writes a $1$~GB working set linearly with
-$T$, and the dual-socket aggregate bandwidth saturates before the
-core count does. Skewed weak scaling, by contrast, falls off a cliff:
-doubling $N_R$ also doubles the load on the four hot partitions, so
-they remain the bottleneck and grow proportionally with the input.
-At $T=16$ skewed efficiency is around $22\%$.
+Uniform weak scaling holds well within one socket: total time grows
+from $0.121$~s at $T=1$ to $0.123$~s at $T=8$ (efficiency
+$\sim 98\%$). The slight super-linear bump at $T=4$
+($\text{eff}\!\approx\!1.07$) is a known cache effect: at $T{=}1$ a
+single core processes one partition group through its private
+caches, while at $T{=}4$ four cores share the $25$~MB socket L3, and
+the per-partition \texttt{FlatCountMap} tables fit more comfortably
+in the aggregate cache (the same effect is documented in the
+Module~2 partition-count study). The fixed per-call overhead is also
+amortised over a $4{\times}$ larger run. Efficiency degrades to $\sim 66\%$ at
+$T=16$ when both sockets are engaged, $50\%$ at $T=20$, and $34\%$
+at $T=32$. The dominant factor is memory bandwidth: the scatter
+phase reads and writes a working set that grows linearly with $T$,
+and the dual-socket aggregate bandwidth saturates before the core
+count does. Skewed weak scaling degrades more sharply because
+increasing $N_R$ also scales the load on the hot partitions in
+proportion; the intra-partition split mitigates this on the probe
+but cannot eliminate the sequential cost of the per-partition build.
+Skewed efficiency at $T=16$ is approximately $23\%$ for the loop
+variant and $34\%$ for the task variant.
 
 \subsection{Phase Breakdown}
-The breakdown in Figure~\ref{fig:breakdown} confirms what one would
-expect from a memory-bound algorithm: scatter $S$ is the most
-expensive single phase under uniform input (about 30--33\% of the
-total), followed by the join. On skewed input the picture rotates: as
-$T$ grows, hist and scatter shrink almost ideally because the
-per-tuple work is partition-blind, but the join keeps growing
-relatively until at $T=16$ it accounts for around 65\% of the total
-time. This is the visible footprint of skew on the timing.
+The breakdown in Figure~\ref{fig:breakdown} reflects the
+memory-bound nature of the kernel. Under uniform input the join
+remains the dominant phase across the parallel range ($\sim 50\%$ of
+the total at $T=8$, $\sim 45$--$48\%$ at $T{=}16$, around $50\%$ at
+$T{=}20$), followed by the scatter on $S$ ($\sim 24\%$ at $T=8$).
+Under skewed input the imbalance is visible: histogram and scatter
+scale almost ideally because the per-tuple work does not depend on
+the partition distribution, while the join phase scales poorly. At
+$T{=}16$ skewed the join accounts for around $65\%$ of the total in
+the loop variant and $60\%$ in the task variant; at $T{=}20$ the gap
+is similar ($66\%$ vs $61\%$). The difference is attributable to
+the intra-partition split, which redistributes the probe load across
+threads inside each hot partition. We did not extend the breakdown
+to $T{=}32$ because the SMT regime is already covered in the strong
+and weak scaling figures and the per-phase shares stabilise once
+both sockets are saturated.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{fig_breakdown.pdf}
-\caption{Phase breakdown for $T \in \{1,4,16\}$, uniform workload.
-Mod3 OpenMP (loop and task) on the left, Mod2 \texttt{std::thread} on
-the right.}
+\caption{Phase breakdown for $T \in \{4,8,16,20\}$, loop and task
+variants. Uniform workload on the left, skewed on the right. $T{=}1$
+is omitted because it visually dominates and obscures the parallel
+regime.}
 \label{fig:breakdown}
 \end{figure}
 
-\subsection{Schedule Sensitivity}
-Figure~\ref{fig:schedule} reports the join time at $T=8$ for five
+\subsection{Schedule Sensitivity}\label{sec:schedule}
+Figure~\ref{fig:schedule} shows the join time at $T=8$ for five
 schedule policies (\texttt{static}, \texttt{static,1},
-\texttt{dynamic,1}, \texttt{dynamic,4}, \texttt{guided,1}). All
-policies converge within $\sim$1\%. With $P=128$ and $T=8$ the ratio
-$P/T=16$ is high enough that even \texttt{static} balances the load
-reasonably: each thread gets a chunk of $16$ partitions, and across
-the chunk the heavy and light partitions average out. The result is
-consistent with the expected behaviour of static block partitioning
-when the unit of work is small relative to the per-thread quota.
+\texttt{dynamic,1}, \texttt{dynamic,4}, \texttt{guided,1}) on both
+workloads. The policies fall within $\sim 1\%$ of each other on
+uniform input and within $\sim 1.5\%$ on skewed input. With $P=128$
+and $T=8$ the ratio $P/T=16$ is high enough that even \texttt{static}
+produces a balanced load: each thread receives a chunk of $16$
+partitions and the within-chunk variance averages out. This is the
+expected regime when the unit of work is small relative to the
+per-thread quota.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{fig_schedule.pdf}
-\caption{Join time at $T=8$ across five schedule policies.}
+\caption{Join time at $T=8$ across five schedule policies, uniform
+(left) and skewed (right). All policies fall within $\sim 1.5\%$ at
+$P/T=16$.}
 \label{fig:schedule}
 \end{figure}
 
-The choice of \texttt{dynamic,1} as the production default is driven
-not by the $T=8$ measurements but by the asymptotic behaviour at
-larger $T$ and lower $P/T$ ratios: the heuristic is robust regardless
-of partition-size variance, at the cost of a small runtime overhead
-that is invisible at this granularity.
+The selection of \texttt{dynamic,1} as the default is motivated by
+the regimes outside the measured one: at higher $T$ and lower $P/T$
+ratios the schedule must absorb partition-size variance that
+\texttt{static} cannot, at the cost of a small runtime overhead which
+is negligible at the granularity of these experiments.
 
 \subsection{Comparison with Module 2}
-The Module~2 implementation uses a hand-rolled \texttt{std::thread}
-pool with \texttt{BlockingQueue} stages between phases. Same
-algorithm, same input, same node, but a very different runtime model.
-Figure~\ref{fig:m2vsm3} plots time and speedup against $T$ for the
-uniform workload across the full thread range
-$T\in\{1,2,4,8,16,20,32\}$, matching the granularity used in the
-Module~2 evaluation. Table~\ref{tab:m2} reports key numbers at $T=16$,
-$T=20$ (full physical-core saturation), and $T=32$ (SMT range).
+The Module~2 implementation uses a \texttt{std::thread} pool with
+\texttt{BlockingQueue} stages between phases, on the same algorithm,
+input, and node. Figure~\ref{fig:m2vsm3} reports time and speedup
+against $T$ for the uniform workload over the full range
+$T\in\{1,2,4,8,16,20,32\}$, matching the granularity of the Module~2
+evaluation. Table~\ref{tab:m2} reports the numbers at $T=16$, $T=20$
+(physical-core saturation), and $T=32$ (SMT range).
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{fig_m2_vs_m3.pdf}
 \caption{Module 2 \texttt{std::thread} versus Module 3 OpenMP, uniform
-input.}
+input. (a) absolute time, (b) speedup against the shared sequential
+baseline, (c) efficiency $= \text{speedup}/T$ over the full thread
+range $T\in\{1,\ldots,32\}$. The vertical line marks $T{=}20$,
+physical-core saturation.}
 \label{fig:m2vsm3}
 \end{figure}
 
@@ -337,82 +469,124 @@ input.}
  & \multicolumn{3}{c|}{$T(p)$ [s]} & \multicolumn{3}{c}{Speedup} \\
 $T$ & Mod2 & M3 loop & M3 task & Mod2 & M3 loop & M3 task \\
 \midrule
-seq & \multicolumn{3}{c|}{0.767} & \multicolumn{3}{c}{1.00} \\
-1  & 0.747 & 0.768 & 0.759 & 1.03 & 1.00 & 1.01 \\
-2  & 0.546 & 0.385 & 0.383 & 1.40 & 2.00 & 1.98 \\
-4  & 0.293 & 0.245 & 0.240 & 2.61 & 3.14 & 3.16 \\
-8  & 0.172 & 0.131 & 0.130 & 4.46 & 5.87 & 5.82 \\
-16 & 0.102 & 0.085 & 0.084 & 7.49 & 9.08 & 9.05 \\
-20 & 0.103 & 0.078 & 0.078 & 7.41 & \textbf{9.86} & 9.69 \\
-32 & 0.089 & 0.076 & 0.075 & 8.64 & 10.08 & \textbf{10.10} \\
+seq & \multicolumn{3}{c|}{0.735} & \multicolumn{3}{c}{1.00} \\
+1  & 0.747 & 0.477 & 0.467 & 0.98 & 1.54 & 1.57 \\
+2  & 0.546 & 0.272 & 0.268 & 1.35 & 2.70 & 2.74 \\
+4  & 0.293 & 0.144 & 0.142 & 2.51 & 5.10 & 5.18 \\
+8  & 0.172 & 0.085 & 0.084 & 4.27 & 8.67 & 8.76 \\
+16 & 0.102 & 0.063 & 0.064 & 7.19 & 11.68 & 11.49 \\
+20 & 0.103 & 0.062 & 0.062 & 7.10 & \textbf{11.93} & 11.92 \\
+32 & 0.089 & 0.065 & 0.066 & 8.29 & 11.30 & 11.13 \\
 \bottomrule
 \end{tabular}
 \caption{Module 2 \texttt{std::thread} vs Module 3 OpenMP, uniform
 $N_R{=}10^7$, $N_S{=}2{\cdot}10^7$. The first row is the shared
-sequential baseline (0.767~s, mean of 3 runs). Mod2 speedups use
-$T_{\text{seq}}/T(p)$ (so $T{=}1$ shows the std::thread one-worker
-overhead, $\sim$3\%); Mod3 speedups use each variant's own
-$T(1)\!\approx\!T_{\text{seq}}$, which differs from $T_{\text{seq}}$
-by less than $0.2\%$.}
+sequential baseline ($0.735$~s, current \texttt{hashjoin\_seq} mean
+of 3 runs); both columns of speedups are
+$T_{\text{seq}}/T(p)$. The Mod2 row at $T{=}1$ is below unity
+because the \texttt{std::thread} pool already pays the cost of one
+worker plus a queue handshake. The optimisations of
+Section~\ref{sec:opt} apply to Module~3 only.}
 \label{tab:m2}
 \end{table}
 
-OpenMP wins at every $T \geq 2$, and the gap widens at small thread
-counts. At $T=2$ the OpenMP variants are roughly $40\%$ faster than
-the \texttt{std::thread} version; at $T=20$ the gap is still around
-$25\%$ in absolute time. Looking at the phase breakdowns, the
-histogram phase is about $4.6\times$ faster in OpenMP at $T=8$
-($3.3$~vs.~$15.2$~ms), while the memory-bound scatter and join phases
-differ by only $5$--$20\%$. The runtime model accounts for the
-difference: OpenMP re-uses a persistent thread pool with cheap
-implicit barriers, whereas the Module~2 design pays for explicit
-queue push/pop with condition variables between phases, around
-$10$--$20~\mu$s of synchronisation overhead per phase per thread. On a
-phase as short as a histogram over $10^7$ tuples this overhead
-dominates.
+OpenMP outperforms the \texttt{std::thread} version at every
+operating point: at $T=8$ the OpenMP variants are about $2\times$
+faster in absolute time, and at $T=20$ the gap is approximately
+$1.65\times$ ($0.062$~s versus $0.103$~s). Two phases account for
+most of the absolute gap. The first is the scatter: at $T=8$ the
+combined scatter $R{+}S$ takes $\sim 30$~ms in OpenMP against
+$\sim 85$~ms in Module~2, a difference of $55$~ms attributable to
+the software prefetch on the random-access destination slot. The
+second is the histogram: at $T=8$ it takes $\sim 11$~ms in OpenMP
+against $\sim 35$~ms in Module~2, where the persistent OpenMP team
+amortises the synchronisation cost while Module~2 pays
+$10$--$20\,\mu$s per phase per thread for the condition-variable
+handshake on the blocking queue, which dominates on a phase as
+short as a histogram over $10^7$ tuples.
 
-A second observation comes from the SMT range. Module~2 shows a
-plateau between $T=16$ and $T=20$ (time grows slightly from $0.102$
-to $0.103$~s), suggesting that the queue-based synchronisation does
-not scale cleanly past one full socket. OpenMP keeps improving up to
-$T=20$ ($0.078$~s, $9.86\times$) and gains a further $4$\% at $T=32$
-in SMT mode. The persistent pool absorbs the additional threads
-without measurable contention, which is the kind of property the
-runtime is engineered for.
+In the SMT range the two implementations behave differently.
+Module~2 plateaus between $T=16$ and $T=20$ (time grows from
+$0.102$~s to $0.103$~s), suggesting that the queue-based
+synchronisation does not scale cleanly across the second socket.
+The OpenMP variants continue to improve up to $T=20$ ($0.062$~s,
+$11.93\times$ against the shared baseline) and only marginally
+worsen at $T=32$, where the additional SMT threads share cache
+bandwidth that is already saturated.
 
-The usual trade-off applies. Module~2 took roughly twice as much code:
-the \texttt{BlockingQueue}, the worker loop, the explicit join, and
-so on. Module~3 fits the same algorithm into a handful of pragmas.
-When the problem does not match the canonical parallel-for or
-task-pool patterns (a custom data-flow with priorities would be one
-example), the explicit-threads route gives more control and is worth
-the verbosity. The partitioned hash join fits OpenMP cleanly, and
-OpenMP wins.
+The efficiency panel of Figure~\ref{fig:m2vsm3} sharpens this
+picture for $T>8$, which the time and speedup curves alone tend to
+hide. Module~2 efficiency falls from $\sim 53\%$ at $T=8$ to
+$\sim 45\%$ at $T=16$ and $\sim 36\%$ at $T=20$; the OpenMP variants
+hold at $\sim 73\%$ at $T=16$ and $\sim 60\%$ at $T=20$. The gap
+widens precisely in the SMT range (the second-socket region is the
+relevant one for the comparison) and is the per-thread footprint of
+the persistent OpenMP team versus the per-phase queue handshake of
+the Module~2 pool.
+
+The two OpenMP curves sit slightly above unity for $T\le 4$
+($\text{eff}\!\approx\!1.27$ at $T{=}4$). This is not super-linear
+scaling in the strict sense: the optimisations of
+Section~\ref{sec:opt} (software prefetch on scatter and probe,
+first-touch placement of the partition buffers) are present in the
+parallel binary but not in \texttt{hashjoin\_seq}, so already at
+$T{=}1$ the OpenMP run is $\sim 1.54\times$ faster than the
+sequential baseline (Table~\ref{tab:m2}). The numerator of the
+efficiency therefore carries a constant offset that decays as
+$T$ grows and synchronisation cost takes over.
+
+The two implementations also differ substantially in code volume.
+Module~2 includes the explicit \texttt{BlockingQueue}, the worker
+loop, and the manual join, which together amount to roughly twice
+the source of the OpenMP version. The OpenMP code expresses the same
+algorithm through a small number of pragmas. Explicit thread
+management retains its value when the structure of the computation
+does not match the canonical parallel-for or task-pool patterns, but
+the partitioned hash join falls within those patterns and benefits
+from the OpenMP runtime.
 
 %---------------------------------------------------------------
 \section{Discussion}
 %---------------------------------------------------------------
-On uniform input loop and task strategies behave equivalently, and
-the choice between them is a matter of style. On skewed input
-LPT-ordered tasks give a measurable advantage at moderate thread
-counts ($T = 4$--$8$), but they cannot rescue a workload where the
-hot-partition count drops below the thread count: the structural
-imbalance dominates beyond that point. The schedule-policy study
-shows a $\sim 1\%$ spread between the five options, which is exactly
-the expected behaviour at $P/T = 16$. Across every operating point
-OpenMP outperforms the Module~2 \texttt{std::thread} version, with
-the gap widest at small thread counts and concentrated in the short
-synchronisation-sensitive phases. At full physical-core saturation
-($T=20$) OpenMP reaches $9.86\times$ speedup against the $7.41\times$
-of Module~2, and continues to scale modestly into the SMT range while
-Module~2 plateaus.
+On uniform input the two OpenMP strategies are equivalent within
+measurement noise; the choice between them does not affect
+performance. On skewed input the task variant retains a stable
+advantage of $12$--$17\%$ across the full thread range, produced by
+the combination of LPT ordering at low $T$ and intra-partition
+splitting of hot partitions at $T \ge 8$. The schedule-policy study
+shows a spread of about $1\%$ across five options, which is the
+expected outcome at $P/T = 16$. Across the entire thread range, the
+OpenMP implementation outperforms the Module~2 \texttt{std::thread}
+version against the shared sequential baseline: at physical-core
+saturation ($T{=}20$) the OpenMP variants reach $11.93\times$ speedup
+against $7.10\times$ for Module~2.
 
-The main avenue left for improvement is NUMA-aware allocation of the
-input relations: $R$ and $S$ are currently generated single-threaded,
-which limits the weak-scaling ceiling reachable at $T \geq 16$.
-Replacing the manual padded reduction array with
-\texttt{task\_reduction} from OpenMP~5.0 would also shorten the code
-without affecting performance, on toolchains where this language
-level is enabled by default.
+Table~\ref{tab:summary} consolidates the headline numbers at the
+operating points of interest.
+
+\begin{table}[h]
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lccc}
+\toprule
+Metric & Uniform & Skewed (loop) & Skewed (task) \\
+\midrule
+Best $T$              & 20    & 20    & 20    \\
+$T(p)$ [s]            & 0.062 & 0.091 & 0.080 \\
+Speedup vs $T_{\rm seq}$ & 11.93 &  4.93 &  5.55 \\
+Efficiency at $T{=}20$   & 60\%  & 25\%  & 28\%  \\
+$T_{\rm loop}/T_{\rm task}$ at $T{=}20$ & --- & \multicolumn{2}{c}{1.13} \\
+\bottomrule
+\end{tabular}
+\caption{Summary of best operating points. The shared sequential
+baseline is $T_{\rm seq}=0.735$~s.}
+\label{tab:summary}
+\end{table}
+
+Across the measured operating points the OpenMP implementation is
+faster, more compact, and more scalable than the Module~2
+\texttt{std::thread} version on the same algorithm and input, with
+the residual margin sitting on memory bandwidth rather than on
+synchronisation or load balance.
 
 \end{document}

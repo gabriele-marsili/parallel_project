@@ -1,4 +1,4 @@
-=== Validation started: Thu Apr 30 05:34:47 PM CEST 2026 ===
+=== Validation started: Mon May  4 12:22:38 PM CEST 2026 ===
 mode=task NR=1000000 NS=2000000 P=128 SEED=42
 
 --- workload=uniform  (reference = hashjoin_seq) ---

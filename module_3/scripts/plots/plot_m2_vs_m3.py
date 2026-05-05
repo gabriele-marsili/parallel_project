@@ -18,14 +18,17 @@ try:
 except OSError:
     plt.rcParams["axes.grid"] = True
 
-THREADS_SEL = [1, 2, 4, 8, 16]
+THREADS_SEL_M3 = [1, 2, 4, 8, 16, 20, 32]
+THREADS_SEL_M2 = [1, 2, 4, 8, 16]  # M2 CSV may not include T=20,32
 
 df3 = pd.read_csv(M3_CSV)
-df3 = df3[(df3["workload"] == "uniform") & (df3["threads"].isin(THREADS_SEL))]
+df3 = df3[(df3["workload"] == "uniform") & (df3["threads"].isin(THREADS_SEL_M3))]
 mean3 = df3.groupby(["impl", "threads"])["t_total_s"].mean().reset_index()
 
 df2 = pd.read_csv(M2_CSV)
-df2 = df2[(df2["nr"] == 10_000_000) & (df2["threads"].isin(THREADS_SEL))].sort_values(
+m2_avail = sorted(df2["threads"].unique())
+THREADS_SEL_M2 = [t for t in [1, 2, 4, 8, 16, 20, 32] if t in m2_avail]
+df2 = df2[(df2["nr"] == 10_000_000) & (df2["threads"].isin(THREADS_SEL_M2))].sort_values(
     "threads"
 )
 
@@ -38,7 +41,7 @@ task_sub = mean3[mean3["impl"] == "task"].sort_values("threads")
 loop_t1 = loop_sub[loop_sub["threads"] == 1]["t_total_s"].values[0]
 task_t1 = task_sub[task_sub["threads"] == 1]["t_total_s"].values[0]
 
-fig, axes = plt.subplots(2, 1, figsize=(8, 5))
+fig, axes = plt.subplots(3, 1, figsize=(8, 7.5))
 
 # (a) absolute time
 ax = axes[0]
@@ -56,36 +59,66 @@ ax.plot(
 )
 ax.set_xscale("log", base=2)
 ax.set_yscale("log")
-ax.set_xticks(THREADS_SEL)
-ax.set_xticklabels([str(t) for t in THREADS_SEL])
+ax.set_xticks(THREADS_SEL_M3)
+ax.set_xticklabels([str(t) for t in THREADS_SEL_M3])
+ax.axvline(x=20, color="darkgray", linestyle=":", linewidth=1.0,
+           alpha=0.7, zorder=0)
 ax.set_xlabel("Threads", fontsize=10)
 ax.set_ylabel("Time [s] (log)", fontsize=10)
 ax.set_title("(a) Absolute time, NR=10M NS=20M uniform", fontsize=10)
 ax.tick_params(labelsize=9)
 ax.legend(fontsize=9)
 
-# (b) speedup
+# (b) speedup vs shared seq baseline
+T_SEQ = 0.735  # current hashjoin_seq mean (mean of 3 runs)
+
 ax = axes[1]
-ax.plot(THREADS_SEL, THREADS_SEL, color="grey", linestyle="--", linewidth=1.0,
-        label="Ideal")
-ax.plot(m2_t, m2_speedup, color="C2", linestyle=":", marker="^", linewidth=1.5,
-        label="Mod2-thread")
-ax.plot(
-    loop_sub["threads"], loop_t1 / loop_sub["t_total_s"], color="C0",
-    linestyle="-", marker="o", linewidth=1.5, label="Mod3-loop",
-)
-ax.plot(
-    task_sub["threads"], task_t1 / task_sub["t_total_s"], color="C1",
-    linestyle="--", marker="s", linewidth=1.5, label="Mod3-task",
-)
+ideal_x = [t for t in THREADS_SEL_M3 if t <= 20]
+ax.plot(ideal_x, ideal_x, color="grey", linestyle="--", linewidth=1.0,
+        label="Ideal (≤20 cores)", alpha=0.6)
+ax.plot(m2_t, T_SEQ / m2_time, color="C2", linestyle=":", marker="^",
+        linewidth=1.5, label="Mod2-thread")
+ax.plot(loop_sub["threads"], T_SEQ / loop_sub["t_total_s"], color="C0",
+        linestyle="-", marker="o", linewidth=1.5, label="Mod3-loop")
+ax.plot(task_sub["threads"], T_SEQ / task_sub["t_total_s"], color="C1",
+        linestyle="--", marker="s", linewidth=1.5, label="Mod3-task")
 ax.set_xscale("log", base=2)
-ax.set_xticks(THREADS_SEL)
-ax.set_xticklabels([str(t) for t in THREADS_SEL])
+ax.set_xticks(THREADS_SEL_M3)
+ax.set_xticklabels([str(t) for t in THREADS_SEL_M3])
+ax.axvline(x=20, color="darkgray", linestyle=":", linewidth=1.0,
+           alpha=0.7, zorder=0)
 ax.set_xlabel("Threads", fontsize=10)
-ax.set_ylabel("Speedup", fontsize=10)
+ax.set_ylabel(r"Speedup vs $T_{\rm seq}=0.735$ s", fontsize=10)
 ax.set_title("(b) Speedup", fontsize=10)
 ax.tick_params(labelsize=9)
-ax.legend(fontsize=9)
+ax.set_ylim(0, 22)
+ax.legend(fontsize=9, loc="upper left")
+
+# (c) efficiency = speedup / T
+ax = axes[2]
+ax.axhline(y=1.0, color="grey", linestyle="--", linewidth=1.0,
+           label="Ideal", alpha=0.6)
+ax.plot(m2_t, (T_SEQ / m2_time) / m2_t, color="C2", linestyle=":",
+        marker="^", linewidth=1.5, label="Mod2-thread")
+ax.plot(loop_sub["threads"],
+        (T_SEQ / loop_sub["t_total_s"]) / loop_sub["threads"],
+        color="C0", linestyle="-", marker="o", linewidth=1.5,
+        label="Mod3-loop")
+ax.plot(task_sub["threads"],
+        (T_SEQ / task_sub["t_total_s"]) / task_sub["threads"],
+        color="C1", linestyle="--", marker="s", linewidth=1.5,
+        label="Mod3-task")
+ax.set_xscale("log", base=2)
+ax.set_xticks(THREADS_SEL_M3)
+ax.set_xticklabels([str(t) for t in THREADS_SEL_M3])
+ax.axvline(x=20, color="darkgray", linestyle=":", linewidth=1.0,
+           alpha=0.7, zorder=0)
+ax.set_xlabel("Threads", fontsize=10)
+ax.set_ylabel("Efficiency", fontsize=10)
+ax.set_title("(c) Efficiency", fontsize=10)
+ax.tick_params(labelsize=9)
+ax.set_ylim(0, 1.2)
+ax.legend(fontsize=9, loc="upper right")
 
 fig.tight_layout()
 os.makedirs(REPORT_DIR, exist_ok=True)

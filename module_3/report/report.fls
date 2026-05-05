@@ -2,7 +2,7 @@ PWD /Users/piccoletto/Desktop/Everything/pisa/corsi/magistrale/primo_anno/SPM/pr
 INPUT /usr/local/texlive/2025/texmf.cnf
 INPUT /usr/local/texlive/2025/texmf-dist/web2c/texmf.cnf
 INPUT /usr/local/texlive/2025/texmf-var/web2c/pdftex/pdflatex.fmt
-INPUT report.tex
+INPUT /Users/piccoletto/Desktop/Everything/pisa/corsi/magistrale/primo_anno/SPM/project_and_midterms/module_3/report/report.tex
 OUTPUT report.log
 INPUT /usr/local/texlive/2025/texmf-dist/tex/latex/base/article.cls
 INPUT /usr/local/texlive/2025/texmf-dist/tex/latex/base/article.cls
@@ -180,6 +180,11 @@ INPUT ./fig_strong.pdf
 INPUT ./fig_strong.pdf
 INPUT ./fig_strong.pdf
 INPUT ./fig_strong.pdf
+INPUT ./fig_skew_gap.pdf
+INPUT ./fig_skew_gap.pdf
+INPUT ./fig_skew_gap.pdf
+INPUT ./fig_skew_gap.pdf
+INPUT ./fig_skew_gap.pdf
 INPUT ./fig_weak.pdf
 INPUT ./fig_weak.pdf
 INPUT ./fig_weak.pdf
@@ -216,6 +221,7 @@ INPUT /usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb
 INPUT /usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb
 INPUT /usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb
 INPUT /usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb
+INPUT /usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb
 INPUT /usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.pfb
 INPUT /usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb
 INPUT /usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb
