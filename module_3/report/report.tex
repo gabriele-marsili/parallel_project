@@ -144,12 +144,12 @@ to fill the gaps left by the heavy ones. The sum $|R_p|+|S_p|$ is an
 appropriate cost proxy because the per-partition cost is linear in
 the size of its two inputs.
 
-All tasks are tied (the OpenMP default). The accumulation into
-\texttt{thr\_results} indexes the per-thread slot via
-\texttt{omp\_get\_thread\_num()}, and tied semantics keep that index
-valid across the task scheduling point introduced by the inner
-\texttt{taskgroup} of the hot-partition path. Untied tasks would
-offer no advantage here.
+All tasks are tied (the OpenMP default). Each body reads
+\texttt{omp\_get\_thread\_num()} once and uses the returned index
+locally to write into \texttt{thr\_results}; no task scheduling
+point separates the read from its use, so the index is stable
+under tied semantics without further care, and untied would offer
+no advantage at the granularity of these tasks.
 
 The reduction uses a manually padded array
 \texttt{PaddedResult thr\_results[T]}, declared with
