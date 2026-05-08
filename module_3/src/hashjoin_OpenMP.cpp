@@ -9,9 +9,9 @@
 #include "join_phases.hpp"
 #include "verifier.hpp"
 
-// Parallel partitioning: histogram, exclusive prefix sum, lock-free scatter.
-// Owns its own parallel region; t_hist and t_scatter return the per-phase
-// wall-clock seconds.
+// Loop-variant partitioning: histogram and scatter as worksharing for-loops
+// with schedule(static). Owns its own parallel region; t_hist and t_scatter
+// return the per-phase wall-clock seconds.
 static void compute_phases(
     std::uint32_t P,
     const std::vector<Record> &relation,
@@ -111,6 +111,109 @@ static void compute_phases(
     t_scatter = s_end - s_start;
 }
 
+// Task-variant partitioning: histogram and scatter expressed as T explicit
+// tasks per phase, each handling a contiguous chunk [(N*t)/T, (N*(t+1))/T).
+// This mirrors the iteration distribution of schedule(static) but routes the
+// work through the OpenMP task model, so the loop-vs-task comparison covers
+// every phase rather than the join only. The shared cursors[t] and
+// local_hists[t] arrays are indexed by the captured task index t (not by
+// omp_get_thread_num), which keeps the histogram counts and the scatter
+// offsets consistent regardless of which thread picks up a given task.
+static void compute_phases_tasks(
+    std::uint32_t P,
+    const std::vector<Record> &relation,
+    unsigned shift,
+    PartitionedRelation &part,
+    double &t_hist,
+    double &t_scatter)
+{
+    const std::size_t N = relation.size();
+    const int T = omp_get_max_threads();
+
+    std::vector<std::size_t> hist(P, 0);
+    std::vector<std::size_t> offsets(P, 0);
+    std::vector<std::vector<std::size_t>> local_hists(T, std::vector<std::size_t>(P, 0));
+    std::vector<std::vector<std::size_t>> cursors(T, std::vector<std::size_t>(P, 0));
+
+    double h_start = 0.0, h_end = 0.0;
+    double s_start = 0.0, s_end = 0.0;
+
+    #pragma omp parallel \
+        default(none) \
+        shared(P, N, T, relation, shift, part, \
+               local_hists, cursors, hist, offsets, \
+               h_start, h_end, s_start, s_end)
+    {
+        #pragma omp single
+        {
+            h_start = omp_get_wtime();
+
+            #pragma omp taskgroup
+            {
+                for (int t = 0; t < T; ++t) {
+                    const std::size_t lo = (N *  t     ) / T;
+                    const std::size_t hi = (N * (t + 1)) / T;
+                    #pragma omp task default(none) firstprivate(t, lo, hi) \
+                        shared(relation, shift, local_hists)
+                    {
+                        for (std::size_t i = lo; i < hi; ++i)
+                            ++local_hists[t][hash_key(relation[i].key, shift)];
+                    }
+                }
+            }
+
+            h_end = omp_get_wtime();
+
+            for (int t = 0; t < T; ++t)
+                for (std::uint32_t b = 0; b < P; ++b)
+                    hist[b] += local_hists[t][b];
+
+            exclusive_prefix_sum_inplace(hist, offsets);
+            part.begin = offsets;
+            part.end.resize(P);
+            for (std::uint32_t i = 0; i < P; ++i)
+                part.end[i] = offsets[i] + hist[i];
+
+            for (std::uint32_t pid = 0; pid < P; ++pid) {
+                std::size_t running = offsets[pid];
+                for (int t = 0; t < T; ++t) {
+                    cursors[t][pid] = running;
+                    running += local_hists[t][pid];
+                }
+            }
+
+            s_start = omp_get_wtime();
+
+            #pragma omp taskgroup
+            {
+                for (int t = 0; t < T; ++t) {
+                    const std::size_t lo = (N *  t     ) / T;
+                    const std::size_t hi = (N * (t + 1)) / T;
+                    #pragma omp task default(none) firstprivate(t, lo, hi) \
+                        shared(relation, shift, part, cursors)
+                    {
+                        constexpr std::size_t PF_DIST = 12;
+                        for (std::size_t i = lo; i < hi; ++i) {
+                            if (i + PF_DIST < hi) {
+                                const std::uint32_t pid_next =
+                                    hash_key(relation[i + PF_DIST].key, shift);
+                                __builtin_prefetch(&part.data[cursors[t][pid_next]], 1, 0);
+                            }
+                            const std::uint32_t pid = hash_key(relation[i].key, shift);
+                            part.data[cursors[t][pid]++] = relation[i];
+                        }
+                    }
+                }
+            }
+
+            s_end = omp_get_wtime();
+        }
+    }
+
+    t_hist    = h_end - h_start;
+    t_scatter = s_end - s_start;
+}
+
 // Loop-level version: parallel for over partitions in the join phase.
 JoinResult run_loop(
     const std::vector<Record> &R,
@@ -175,10 +278,12 @@ JoinResult run_task(
 {
     const unsigned shift = compute_shift(P);
 
-    // Histogram and scatter are uniform per-tuple work, so they stay on the
-    // work-sharing for of compute_phases in both variants.
-    compute_phases(P, R, shift, Rpart, timing.histogram_R, timing.scatter_R);
-    compute_phases(P, S, shift, Spart, timing.histogram_S, timing.scatter_S);
+    // Histogram and scatter use compute_phases_tasks, which expresses the same
+    // chunked iteration distribution through explicit OpenMP tasks rather than
+    // a worksharing for-loop. This keeps the task variant task-based across
+    // all three phases of the algorithm.
+    compute_phases_tasks(P, R, shift, Rpart, timing.histogram_R, timing.scatter_R);
+    compute_phases_tasks(P, S, shift, Spart, timing.histogram_S, timing.scatter_S);
 
     // LPT: submit partitions in decreasing order of |R_p| + |S_p|, which is
     // a linear cost proxy for the per-partition build+probe.

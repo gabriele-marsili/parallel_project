@@ -1,10 +1,5 @@
-// hashjoin_seq.cpp — Sequential reference implementation - as it was in module 2
-//
-// Partitioned Hash Join with Duplicates
-// Uses the Module-1 hash function (XOR-fold + Fibonacci multiply-shift).
-//
-// Compile: g++ -O3 -std=c++20 -Wall -Wextra -Iinclude src/hashjoin_seq.cpp -o hashjoin_seq
-// Run:     ./hashjoin_seq -nr 5 -ns 8 -seed 13 -max-key 8 -p 4
+// Sequential reference for the partitioned hash join. Carried over
+// unchanged from Module 2 to keep the baseline comparable.
 
 #include <chrono>
 #include <cstdint>
@@ -20,10 +15,6 @@
 #include "join_phases.hpp"
 #include "utilities_fns.hpp"
 #include "verifier.hpp"
-
-// ============================================================
-// Sequential partitioning phases
-// ============================================================
 
 // Histogram — O(N)
 static std::vector<std::size_t> compute_histogram(const std::vector<Record>& rel,
@@ -47,14 +38,8 @@ static void scatter_partitioned(const std::vector<Record>& rel,
     }
 }
 
-// (partition_relation not used — sequential uses inline phases with timing)
-
-// ============================================================
-// Full sequential join pipeline with phase timing
-// ============================================================
-// Accepts pre-allocated PartitionedRelation buffers (data field sized NR/NS before call).
-// Scatter writes directly into Rpart.data / Spart.data — no heap allocation inside the
-// timed region. begin/end metadata is filled in here.
+// Sequential join pipeline. Accepts pre-allocated PartitionedRelation
+// buffers so the scatter measurement excludes heap allocation.
 static JoinResult partitioned_hash_join_sequential(const std::vector<Record>& R,
                                                     const std::vector<Record>& S,
                                                     std::uint32_t P,
@@ -115,9 +100,6 @@ static JoinResult partitioned_hash_join_sequential(const std::vector<Record>& R,
     return total;
 }
 
-// ============================================================
-// Main
-// ============================================================
 int main(int argc, char** argv) {
     std::uint64_t nr = 0, ns = 0, seed = 0, max_key = 0, p = 0;
 

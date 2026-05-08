@@ -36,13 +36,13 @@ fig, axes = plt.subplots(1, 2, figsize=(8, 3.5), sharey=False)
 
 for ax, wl in zip(axes, workloads):
     threads_all = sorted(mean3["threads"].unique())
-    # Ideal line capped at 20 (physical cores) — beyond that SMT
+    # Ideal line capped at 16 (physical cores) — beyond that SMT
     # threads share cache bandwidth, so linear ideal is misleading.
-    ideal_x = [t for t in threads_all if t <= 20]
+    ideal_x = [t for t in threads_all if t <= 16]
     ax.plot(
         ideal_x, ideal_x,
         color="grey", linestyle="--", linewidth=1.0,
-        label="Ideal (≤20 cores)", zorder=1, alpha=0.6,
+        label="Ideal (≤16 cores)", zorder=1, alpha=0.6,
     )
 
     for impl_key, impl_label, color, ls, marker in impls:
@@ -68,22 +68,6 @@ for ax, wl in zip(axes, workloads):
             zorder=2,
         )
 
-    if wl == "uniform":
-        m2_thr_set = {1, 2, 4, 8, 16}
-        sub2 = df2[df2["threads"].isin(m2_thr_set)].sort_values("threads")
-        speedup2 = (sub2["time_seq"] / sub2["time_par"]).values
-        ax.plot(
-            sub2["threads"].values,
-            speedup2,
-            color="C2",
-            linestyle=":",
-            marker="^",
-            markersize=5,
-            linewidth=1.5,
-            label="Mod2-thread",
-            zorder=2,
-        )
-
     ax.set_xscale("log", base=2)
     ax.set_title(wl.capitalize(), fontsize=10)
     ax.set_xlabel("Threads", fontsize=10)
@@ -91,13 +75,18 @@ for ax, wl in zip(axes, workloads):
     ax.tick_params(labelsize=9)
     ax.set_xticks(threads_all)
     ax.set_xticklabels([str(t) for t in threads_all])
-    ax.axvline(x=20, color="darkgray", linestyle=":", linewidth=1.0, zorder=0,
+    ax.axvline(x=16, color="darkgray", linestyle=":", linewidth=1.0, zorder=0,
                alpha=0.7)
-    ax.text(20, ax.get_ylim()[1] * 0.05, " 20 cores", fontsize=8,
+    ax.text(16, ax.get_ylim()[1] * 0.05, " 16 cores", fontsize=8,
             color="dimgray", va="bottom", ha="left", style="italic")
-    # Tighten y-range to actual data extent
-    ymax = max(threads_all[-1] / 8.0, 13.0)  # at least 13 to give some headroom
-    ax.set_ylim(0, ymax)
+    # Tighten y-range to actual data extent: cap to the largest visible
+    # speedup with a small headroom; the ideal line goes off-axis on
+    # purpose since intra-implementation T(1)/T(p) is bounded by p anyway.
+    sub_all = mean3[mean3["workload"] == wl]
+    if not sub_all.empty:
+        t1_loop = sub_all[(sub_all["impl"] == "loop") & (sub_all["threads"] == 1)]["t_total_s"].values[0]
+        max_speedup = (t1_loop / sub_all["t_total_s"]).max()
+        ax.set_ylim(0, max_speedup * 1.18)
     ax.legend(fontsize=9, loc="upper left")
 
 fig.tight_layout()

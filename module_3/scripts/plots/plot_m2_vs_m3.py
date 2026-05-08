@@ -61,7 +61,7 @@ ax.set_xscale("log", base=2)
 ax.set_yscale("log")
 ax.set_xticks(THREADS_SEL_M3)
 ax.set_xticklabels([str(t) for t in THREADS_SEL_M3])
-ax.axvline(x=20, color="darkgray", linestyle=":", linewidth=1.0,
+ax.axvline(x=16, color="darkgray", linestyle=":", linewidth=1.0,
            alpha=0.7, zorder=0)
 ax.set_xlabel("Threads", fontsize=10)
 ax.set_ylabel("Time [s] (log)", fontsize=10)
@@ -70,12 +70,12 @@ ax.tick_params(labelsize=9)
 ax.legend(fontsize=9)
 
 # (b) speedup vs shared seq baseline
-T_SEQ = 0.735  # current hashjoin_seq mean (mean of 3 runs)
+T_SEQ = 0.802  # current hashjoin_seq mean (mean of 3 runs)
 
 ax = axes[1]
-ideal_x = [t for t in THREADS_SEL_M3 if t <= 20]
+ideal_x = [t for t in THREADS_SEL_M3 if t <= 16]
 ax.plot(ideal_x, ideal_x, color="grey", linestyle="--", linewidth=1.0,
-        label="Ideal (≤20 cores)", alpha=0.6)
+        label="Ideal (≤16 cores)", alpha=0.6)
 ax.plot(m2_t, T_SEQ / m2_time, color="C2", linestyle=":", marker="^",
         linewidth=1.5, label="Mod2-thread")
 ax.plot(loop_sub["threads"], T_SEQ / loop_sub["t_total_s"], color="C0",
@@ -85,10 +85,10 @@ ax.plot(task_sub["threads"], T_SEQ / task_sub["t_total_s"], color="C1",
 ax.set_xscale("log", base=2)
 ax.set_xticks(THREADS_SEL_M3)
 ax.set_xticklabels([str(t) for t in THREADS_SEL_M3])
-ax.axvline(x=20, color="darkgray", linestyle=":", linewidth=1.0,
+ax.axvline(x=16, color="darkgray", linestyle=":", linewidth=1.0,
            alpha=0.7, zorder=0)
 ax.set_xlabel("Threads", fontsize=10)
-ax.set_ylabel(r"Speedup vs $T_{\rm seq}=0.735$ s", fontsize=10)
+ax.set_ylabel(r"Speedup vs $T_{\rm seq}=0.802$ s", fontsize=10)
 ax.set_title("(b) Speedup", fontsize=10)
 ax.tick_params(labelsize=9)
 ax.set_ylim(0, 22)
@@ -111,13 +111,13 @@ ax.plot(task_sub["threads"],
 ax.set_xscale("log", base=2)
 ax.set_xticks(THREADS_SEL_M3)
 ax.set_xticklabels([str(t) for t in THREADS_SEL_M3])
-ax.axvline(x=20, color="darkgray", linestyle=":", linewidth=1.0,
+ax.axvline(x=16, color="darkgray", linestyle=":", linewidth=1.0,
            alpha=0.7, zorder=0)
 ax.set_xlabel("Threads", fontsize=10)
 ax.set_ylabel("Efficiency", fontsize=10)
 ax.set_title("(c) Efficiency", fontsize=10)
 ax.tick_params(labelsize=9)
-ax.set_ylim(0, 1.2)
+ax.set_ylim(0, 1.6)
 ax.legend(fontsize=9, loc="upper right")
 
 fig.tight_layout()

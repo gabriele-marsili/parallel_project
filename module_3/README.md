@@ -156,6 +156,21 @@ Steps performed automatically:
 
 ---
 
+## Headline numbers (uniform + skewed, NR=10M, NS=20M, P=128)
+
+Sequential baseline `T_seq = 0.802 s` (mean of 3 runs on the same node).
+
+| Workload | Variant | Best `T` | `T(p)` [s] | Speedup vs `T_seq` | Within-impl. efficiency |
+|----------|---------|----------|------------|--------------------|--------------------------|
+| Uniform  | loop    | 16       | 0.075      | **10.69×**         | 67%                      |
+| Uniform  | task    | 16       | 0.095      | 8.44×              | 53%                      |
+| Skewed   | loop    | 16       | 0.103      | 7.79×              | 31%                      |
+| Skewed   | task    | 8        | 0.094      | **8.55×**          | 67%                      |
+
+Cross-implementation: at `T=16` the loop variant is `1.36×` faster than the Module 2 `std::thread` version (0.075 s vs 0.102 s); at `T=32` (SMT saturation) the two implementations converge.
+
+Full numbers, plots and per-phase breakdown: see `report/report.pdf`.
+
 ## Results
 
 Files in `results/cluster/`:
@@ -172,12 +187,18 @@ Files in `results/cluster/`:
 
 ---
 
-## Hardware (cluster)
+## Hardware (cluster compute node, allocated via SLURM `--exclusive --cpus-per-task=32`)
 
 | Property | Value                                          |
 |----------|------------------------------------------------|
-| CPU      | 2x Intel Xeon E5-2650 v3 @ 2.30 GHz (Haswell) |
-| vCPU     | 2 sockets x 10 cores x 2 HT = 40              |
+| CPU      | 2x Intel Xeon E5-2640 v2 @ 2.00 GHz (Ivy Bridge) |
+| vCPU     | 2 sockets x 8 cores x 2 HT = 32                |
+| NUMA     | 2 nodes                                        |
 | RAM      | 128 GB                                         |
-| Compiler | g++ 12.2.0                                     |
+| Compiler | g++ with `-O3 -march=native -std=c++20 -fopenmp` |
 | OpenMP   | 4.5                                            |
+
+The Module 2 measurements used in the comparison were obtained from a
+SLURM job with the same allocation policy on the same hardware class,
+so the cross-implementation comparison in the report is
+apples-to-apples.

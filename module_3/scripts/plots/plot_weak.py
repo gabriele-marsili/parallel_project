@@ -60,24 +60,6 @@ for ax, wl in zip(axes, workloads):
             zorder=2,
         )
 
-    if wl == "uniform":
-        m2_thr_set = {1, 2, 4, 8, 16}
-        sub2 = df2[df2["threads"].isin(m2_thr_set)].sort_values("threads")
-        if not sub2.empty:
-            t1_2 = sub2[sub2["threads"] == 1]["time_sec"].values[0]
-            eff2 = t1_2 / sub2["time_sec"].values
-            ax.plot(
-                sub2["threads"].values,
-                eff2,
-                color="C2",
-                linestyle=":",
-                marker="^",
-                markersize=5,
-                linewidth=1.5,
-                label="Mod2-thread",
-                zorder=2,
-            )
-
     ax.set_xscale("log", base=2)
     ax.set_title(wl.capitalize(), fontsize=10)
     ax.set_xlabel("Threads", fontsize=10)
@@ -85,7 +67,7 @@ for ax, wl in zip(axes, workloads):
     ax.tick_params(labelsize=9)
     ax.set_xticks(threads_all)
     ax.set_xticklabels([str(t) for t in threads_all])
-    ax.axvline(x=20, color="darkgray", linestyle=":", linewidth=1.0,
+    ax.axvline(x=16, color="darkgray", linestyle=":", linewidth=1.0,
                alpha=0.7, zorder=0)
     ax.set_ylim(0, 1.15)
     ax.legend(fontsize=9, loc="lower left" if wl == "skewed" else "upper right")

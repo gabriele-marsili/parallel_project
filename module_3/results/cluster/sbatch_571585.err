@@ -1,0 +1,24 @@
+--- Phase Breakdown ---
+  Histogram_R :     17.007 ms  (  2.1%)
+  Scatter_R   :    130.856 ms  ( 16.3%)
+  Histogram_S :     33.774 ms  (  4.2%)
+  Scatter_S   :    274.573 ms  ( 34.3%)
+  Join_local  :    345.000 ms  ( 43.1%)
+  Accumulation:      0.000 ms  (  0.0%)
+  TOTAL       :    801.211 ms
+--- Phase Breakdown ---
+  Histogram_R :     17.006 ms  (  2.1%)
+  Scatter_R   :    130.900 ms  ( 16.3%)
+  Histogram_S :     33.796 ms  (  4.2%)
+  Scatter_S   :    275.387 ms  ( 34.3%)
+  Join_local  :    345.239 ms  ( 43.0%)
+  Accumulation:      0.000 ms  (  0.0%)
+  TOTAL       :    802.329 ms
+--- Phase Breakdown ---
+  Histogram_R :     17.236 ms  (  2.1%)
+  Scatter_R   :    130.631 ms  ( 16.3%)
+  Histogram_S :     33.849 ms  (  4.2%)
+  Scatter_S   :    275.015 ms  ( 34.3%)
+  Join_local  :    345.203 ms  ( 43.0%)
+  Accumulation:      0.000 ms  (  0.0%)
+  TOTAL       :    801.934 ms

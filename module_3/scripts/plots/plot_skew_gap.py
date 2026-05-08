@@ -47,7 +47,7 @@ ax.set_xlabel("Threads", fontsize=10)
 ax.set_ylabel("Join phase time [ms] (log)", fontsize=10)
 ax.set_title("(a) Skewed: join time", fontsize=10)
 ax.tick_params(labelsize=9)
-ax.axvline(x=20, color="darkgray", linestyle=":", linewidth=1.0,
+ax.axvline(x=16, color="darkgray", linestyle=":", linewidth=1.0,
            alpha=0.7, zorder=0)
 ax.legend(fontsize=9)
 
@@ -56,7 +56,7 @@ ax = axes[1]
 ratio = loop["t_total_s"].values / task["t_total_s"].values
 ax.plot(threads, ratio, color="C2", marker="d", linewidth=1.5)
 ax.axhline(y=1.0, color="grey", linestyle=":", linewidth=1.0)
-ax.axvline(x=20, color="darkgray", linestyle=":", linewidth=1.0,
+ax.axvline(x=16, color="darkgray", linestyle=":", linewidth=1.0,
            alpha=0.7, zorder=0)
 ax.set_xscale("log", base=2)
 ax.set_xticks(threads)

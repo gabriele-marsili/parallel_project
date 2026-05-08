@@ -1,0 +1,39 @@
+=== Node info ===
+node01
+Architecture:                         x86_64
+CPU op-mode(s):                       32-bit, 64-bit
+Address sizes:                        46 bits physical, 48 bits virtual
+Byte Order:                           Little Endian
+CPU(s):                               32
+On-line CPU(s) list:                  0-31
+Vendor ID:                            GenuineIntel
+Model name:                           Intel(R) Xeon(R) CPU E5-2640 v2 @ 2.00GHz
+CPU family:                           6
+Model:                                62
+Thread(s) per core:                   2
+Core(s) per socket:                   8
+Socket(s):                            2
+Stepping:                             4
+CPU max MHz:                          2500.0000
+CPU min MHz:                          1200.0000
+
+=== Build ===
+-rwxr-xr-x 1 g.marsili9 g.marsili9 61376 May  6 20:42 hashjoin_omp
+-rwxr-xr-x 1 g.marsili9 g.marsili9 61384 May  6 20:42 hashjoin_omp_runtime
+-rwxr-xr-x 1 g.marsili9 g.marsili9 28440 May  6 20:42 hashjoin_seq
+
+=== HW info to file ===
+=== Sequential baseline (3 reps) ===
+time_sec=0.801219
+time_sec=0.802336
+time_sec=0.801942
+=== Strong scaling ===
+Strong scaling: 85 lines
+=== Weak scaling ===
+Weak scaling: 85 lines
+=== Breakdown ===
+Breakdown: 85 lines
+=== Schedule sensitivity ===
+Schedule: 31 lines
+=== Validation (loop vs task vs seq, small) ===
+=== ALL DONE on node01 at Wed May  6 08:47:11 PM CEST 2026 ===
