@@ -1,4 +1,4 @@
-=== Validation started: Wed May  6 03:57:09 PM CEST 2026 ===
+=== Validation started: Sat May  9 06:05:17 PM CEST 2026 ===
 mode=task NR=1000000 NS=2000000 P=128 SEED=42
 
 --- workload=uniform  (reference = hashjoin_seq) ---
@@ -18,6 +18,9 @@ mode=task NR=1000000 NS=2000000 P=128 SEED=42
   t=16  PASS
 
 --- cross-mode: loop vs task  t=4  workload=uniform ---
+  PASS
+
+--- cross-mode: loop vs task  t=4  workload=skewed ---
   PASS
 
 === task VALIDATION: ALL PASS ===

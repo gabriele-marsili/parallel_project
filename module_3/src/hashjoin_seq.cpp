@@ -25,12 +25,14 @@ static std::vector<std::size_t> compute_histogram(const std::vector<Record>& rel
     return hist;
 }
 
-// Scatter — O(N), writes into pre-allocated output buffer
+// Scatter — O(N), writes into pre-allocated output buffer.
+// Templated on the output allocator so it works with both std::allocator and
+// the default_init_allocator used by PartitionedRelation::data.
+template <class OutVec>
 static void scatter_partitioned(const std::vector<Record>& rel,
                                 unsigned shift,
                                 const std::vector<std::size_t>& begin,
-                                std::vector<Record>& out) {
-    // out must already have rel.size() capacity; no allocation here
+                                OutVec& out) {
     std::vector<std::size_t> next = begin;
     for (const auto& rec : rel) {
         const std::uint32_t pid = hash_key(rec.key, shift);

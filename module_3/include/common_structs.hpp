@@ -3,20 +3,40 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <memory>
+#include <new>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
-// ------------------------------------------------------------
-// Record definition
-// ------------------------------------------------------------
 struct Record {
-    std::uint64_t key{};
+    std::uint64_t key;
 };
 
-// ------------------------------------------------------------
-// Partitioned relation metadata
-// ------------------------------------------------------------
+// Allocator that performs default-initialisation (instead of value-init) on
+// element construction. With trivially default-constructible T this makes
+// vector::resize skip the per-element write, so the first parallel write
+// to a page is the one that fixes its NUMA placement under Linux first-touch.
+template <class T>
+struct default_init_allocator : std::allocator<T> {
+    using std::allocator<T>::allocator;
+
+    template <class U>
+    struct rebind { using other = default_init_allocator<U>; };
+
+    template <class U>
+    void construct(U* p) noexcept(std::is_nothrow_default_constructible_v<U>) {
+        ::new (static_cast<void*>(p)) U;
+    }
+
+    template <class U, class... Args>
+    void construct(U* p, Args&&... args) {
+        ::new (static_cast<void*>(p)) U(std::forward<Args>(args)...);
+    }
+};
+
 struct PartitionedRelation {
-    std::vector<Record> data;
+    std::vector<Record, default_init_allocator<Record>> data;
     std::vector<std::size_t> begin;
     std::vector<std::size_t> end;
 };

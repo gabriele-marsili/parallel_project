@@ -1,14 +1,5 @@
-"""Loop vs task on skewed input: absolute join time and relative gap.
-
-Visualises the hot-partition split effect introduced in run_task.
-Left  : absolute join time vs T (loop and task curves).
-Right : relative speedup task / loop = T_loop / T_task.
-"""
-
 import os
-
 import matplotlib
-
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -33,7 +24,6 @@ task = mean[mean["impl"] == "task"].set_index("threads").reindex(threads)
 
 fig, axes = plt.subplots(1, 2, figsize=(8, 3.2))
 
-# (a) Absolute join time, log-y so the high-T plateau is readable
 ax = axes[0]
 ax.plot(threads, loop["t_join"].values * 1000, color="C0", marker="o",
         linestyle="-", linewidth=1.5, label="loop")
@@ -51,7 +41,6 @@ ax.axvline(x=16, color="darkgray", linestyle=":", linewidth=1.0,
            alpha=0.7, zorder=0)
 ax.legend(fontsize=9)
 
-# (b) Relative speedup task vs loop
 ax = axes[1]
 ratio = loop["t_total_s"].values / task["t_total_s"].values
 ax.plot(threads, ratio, color="C2", marker="d", linewidth=1.5)
@@ -65,7 +54,6 @@ ax.set_xlabel("Threads", fontsize=10)
 ax.set_ylabel(r"$T_{\rm loop}/T_{\rm task}$", fontsize=10)
 ax.set_title("(b) Skewed: task/loop total-time ratio", fontsize=10)
 ax.tick_params(labelsize=9)
-# annotate values
 for xi, yi in zip(threads, ratio):
     ax.text(xi, yi + 0.012, f"{yi:.2f}", ha="center", va="bottom", fontsize=8)
 ax.set_ylim(0.95, max(1.28, ratio.max() + 0.08))

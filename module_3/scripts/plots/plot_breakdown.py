@@ -1,9 +1,5 @@
-"""Phase breakdown stacked bar chart for Mod3 (uniform | skewed)."""
-
 import os
-
 import matplotlib
-
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -20,7 +16,6 @@ except OSError:
 
 PHASES = ["t_hist_r", "t_scatter_r", "t_hist_s", "t_scatter_s", "t_join"]
 PHASE_LABELS = ["Hist R", "Scatter R", "Hist S", "Scatter S", "Join"]
-# Skip T=1 because it dominates visually and obscures the parallel scaling.
 THREADS_SEL = [4, 8, 16, 20]
 IMPLS = ["loop", "task"]
 
@@ -46,7 +41,6 @@ for ax, wl in zip(axes, ["uniform", "skewed"]):
             labels.append(f"T{t}\n{impl}")
 
     x = np.arange(len(labels))
-    # Convert to ms for readability (parallel times are < 200ms)
     bottoms = np.zeros(len(labels))
     totals = np.zeros(len(labels))
     for p, lab, color in zip(PHASES, PHASE_LABELS, colors):
@@ -55,12 +49,10 @@ for ax, wl in zip(axes, ["uniform", "skewed"]):
                edgecolor="white", linewidth=0.4)
         bottoms += vals
         totals += vals
-    # Annotate total on top of each bar
     for xi, tot in zip(x, totals):
         ax.text(xi, tot * 1.02, f"{tot:.0f}", ha="center", va="bottom",
                 fontsize=8, color="dimgray")
 
-    # Visual separator between thread groups
     for i in range(1, len(THREADS_SEL)):
         ax.axvline(x=2 * i - 0.5, color="lightgray", linestyle="-",
                    linewidth=0.5, zorder=0)

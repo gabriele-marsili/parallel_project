@@ -1,9 +1,5 @@
-"""Strong scaling plot: speedup vs threads. Mod3 loop+task vs Mod2 std::thread."""
-
 import os
-
 import matplotlib
-
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -18,11 +14,9 @@ try:
 except OSError:
     plt.rcParams["axes.grid"] = True
 
-# Mod3
 df3 = pd.read_csv(M3_CSV)
 mean3 = df3.groupby(["impl", "workload", "threads"])["t_total_s"].mean().reset_index()
 
-# Mod2 (NR=10M only, uniform-only by construction)
 df2 = pd.read_csv(M2_CSV)
 df2 = df2[df2["nr"] == 10_000_000].copy()
 
@@ -36,8 +30,6 @@ fig, axes = plt.subplots(1, 2, figsize=(8, 3.5), sharey=False)
 
 for ax, wl in zip(axes, workloads):
     threads_all = sorted(mean3["threads"].unique())
-    # Ideal line capped at 16 (physical cores) — beyond that SMT
-    # threads share cache bandwidth, so linear ideal is misleading.
     ideal_x = [t for t in threads_all if t <= 16]
     ax.plot(
         ideal_x, ideal_x,
@@ -79,9 +71,6 @@ for ax, wl in zip(axes, workloads):
                alpha=0.7)
     ax.text(16, ax.get_ylim()[1] * 0.05, " 16 cores", fontsize=8,
             color="dimgray", va="bottom", ha="left", style="italic")
-    # Tighten y-range to actual data extent: cap to the largest visible
-    # speedup with a small headroom; the ideal line goes off-axis on
-    # purpose since intra-implementation T(1)/T(p) is bounded by p anyway.
     sub_all = mean3[mean3["workload"] == wl]
     if not sub_all.empty:
         t1_loop = sub_all[(sub_all["impl"] == "loop") & (sub_all["threads"] == 1)]["t_total_s"].values[0]

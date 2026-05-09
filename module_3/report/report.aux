@@ -12,10 +12,10 @@
 \newlabel{sec:opt}{{2.4}{2}{Targeted Optimisations}{subsection.2.4}{}}
 \@writefile{toc}{\contentsline {paragraph}{Software prefetching in scatter and probe.}{2}{section*.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Intra-partition parallelism for hot partitions.}{2}{section*.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{NUMA placement of partition buffers (attempted).}{2}{section*.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{NUMA placement of partition buffers.}{2}{section*.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {3}Skewed Workload}{2}{section.3}\protected@file@percent }
 \newlabel{sec:skew}{{3}{2}{Skewed Workload}{section.3}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {4}Validation}{2}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Validation}{3}{section.4}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {5}Experimental Evaluation}{3}{section.5}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Setup}{3}{subsection.5.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Strong Scaling}{3}{subsection.5.2}\protected@file@percent }
@@ -25,18 +25,18 @@
 \@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Strong scaling. Speedup is $T(1)/T(p)$ averaged over three repetitions. The dashed line indicates the ideal.}}{3}{figure.caption.5}\protected@file@percent }
 \newlabel{fig:strong}{{1}{3}{Strong scaling. Speedup is $T(1)/T(p)$ averaged over three repetitions. The dashed line indicates the ideal}{figure.caption.5}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Weak Scaling}{3}{subsection.5.3}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Skewed input. (a) Join phase time for loop and task vs $T$: the gap is the visible footprint of the intra-partition split. (b) Total-time ratio $T_{\rm  loop}/T_{\rm  task}$, peaking around $1.18$ at $T{=}8$ as the intra-partition split engages and narrowing to $1.02$ at $T{=}32$ as both variants converge to the bandwidth ceiling.}}{4}{figure.caption.6}\protected@file@percent }
-\newlabel{fig:skewgap}{{2}{4}{Skewed input. (a) Join phase time for loop and task vs $T$: the gap is the visible footprint of the intra-partition split. (b) Total-time ratio $T_{\rm loop}/T_{\rm task}$, peaking around $1.18$ at $T{=}8$ as the intra-partition split engages and narrowing to $1.02$ at $T{=}32$ as both variants converge to the bandwidth ceiling}{figure.caption.6}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Skewed input. (a) Join phase time for loop and task vs $T$: the gap is the visible footprint of the intra-partition split. (b) Total-time ratio $T_{\rm  loop}/T_{\rm  task}$, around $1.17$ at $T{=}8$ as the intra-partition split engages, narrowing in the $T{\in }\{16,20\}$ range, and widening again to $1.28$ at $T{=}32$ where the loop variant stalls under the four-partition bottleneck.}}{4}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:skewgap}{{2}{4}{Skewed input. (a) Join phase time for loop and task vs $T$: the gap is the visible footprint of the intra-partition split. (b) Total-time ratio $T_{\rm loop}/T_{\rm task}$, around $1.17$ at $T{=}8$ as the intra-partition split engages, narrowing in the $T{\in }\{16,20\}$ range, and widening again to $1.28$ at $T{=}32$ where the loop variant stalls under the four-partition bottleneck}{figure.caption.6}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Weak scaling. Efficiency is $T(1)/T(p)$ with the input scaled linearly with the thread count.}}{4}{figure.caption.7}\protected@file@percent }
 \newlabel{fig:weak}{{3}{4}{Weak scaling. Efficiency is $T(1)/T(p)$ with the input scaled linearly with the thread count}{figure.caption.7}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Phase Breakdown}{4}{subsection.5.4}\protected@file@percent }
 \newlabel{sec:break}{{5.4}{4}{Phase Breakdown}{subsection.5.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Schedule Sensitivity}{4}{subsection.5.5}\protected@file@percent }
-\newlabel{sec:schedule}{{5.5}{4}{Schedule Sensitivity}{subsection.5.5}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Phase breakdown for $T \in \{4,8,16,20\}$, loop and task variants. Uniform workload on the left, skewed on the right. $T{=}1$ is omitted because it visually dominates and obscures the parallel regime.}}{4}{figure.caption.8}\protected@file@percent }
 \newlabel{fig:breakdown}{{4}{4}{Phase breakdown for $T \in \{4,8,16,20\}$, loop and task variants. Uniform workload on the left, skewed on the right. $T{=}1$ is omitted because it visually dominates and obscures the parallel regime}{figure.caption.8}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Join time at $T=8$ across five schedule policies, uniform (left) and skewed (right). On uniform all policies fall within $\sim 1\%$; on skewed the two \texttt  {dynamic} policies are $\sim 38\%$ faster than \texttt  {static}/\texttt  {guided}.}}{4}{figure.caption.9}\protected@file@percent }
 \newlabel{fig:schedule}{{5}{4}{Join time at $T=8$ across five schedule policies, uniform (left) and skewed (right). On uniform all policies fall within $\sim 1\%$; on skewed the two \texttt {dynamic} policies are $\sim 38\%$ faster than \texttt {static}/\texttt {guided}}{figure.caption.9}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Schedule Sensitivity}{4}{subsection.5.5}\protected@file@percent }
+\newlabel{sec:schedule}{{5.5}{4}{Schedule Sensitivity}{subsection.5.5}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.6}Comparison with Module 2}{4}{subsection.5.6}\protected@file@percent }
 \newlabel{sec:m2cmp}{{5.6}{4}{Comparison with Module 2}{subsection.5.6}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Module 2 \texttt  {std::thread} versus Module 3 OpenMP, uniform input. (a) absolute time, (b) speedup against the shared sequential baseline, (c) efficiency $= \text  {speedup}/T$ over the full thread range $T\in \{1,\dots  ,32\}$. The vertical dotted line marks $T{=}16$, physical-core saturation.}}{5}{figure.caption.10}\protected@file@percent }

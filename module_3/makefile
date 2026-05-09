@@ -1,4 +1,6 @@
-CXX      = g++-15
+# Pick g++-15 if installed (Homebrew on macOS), otherwise plain g++.
+# Command-line override (e.g. `make CXX=g++-13`) always wins.
+CXX      = $(shell command -v g++-15 >/dev/null 2>&1 && echo g++-15 || echo g++)
 CXXSTD   = -std=c++20
 CXXFLAGS = -O3 -Wall -Wextra $(CXXSTD) -Iinclude $(EXTRA_CXXFLAGS)
 OMPFLAGS = -fopenmp
@@ -32,13 +34,14 @@ cluster: src/hashjoin_seq.cpp src/hashjoin_OpenMP.cpp include/*.hpp
 tar:
 	$(MAKE) clean
 	zip -r $(ZIPNAME) src/ include/ makefile scripts/ README.md
-	@for d in results report tests; do \
-	    [ -d "$$d" ] && zip -r $(ZIPNAME) $$d/ \
-	        --exclude='*.aux' --exclude='*.log' --exclude='*.out' \
-	        --exclude='*.toc' --exclude='*.png' \
-	        --exclude='*.fls' --exclude='*.fdb_latexmk' \
-	        --exclude='*.synctex.gz' || true; \
-	done
+	@[ -d results/cluster ] && zip -r $(ZIPNAME) results/cluster/ --exclude='*.png' || true
+	@[ -d report ] && zip -r $(ZIPNAME) report/ \
+	    --exclude='report/*.aux' --exclude='report/*.log' \
+	    --exclude='report/*.out' --exclude='report/*.toc' \
+	    --exclude='report/*.tex' --exclude='report/*.png' \
+	    --exclude='report/*.fls' --exclude='report/*.fdb_latexmk' \
+	    --exclude='report/*.synctex.gz' || true
+	@[ -d tests ] && zip -r $(ZIPNAME) tests/ || true
 	@echo "Package ready: $(ZIPNAME)"
 
 clean:

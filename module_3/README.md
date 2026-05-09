@@ -7,7 +7,7 @@ Parallel partitioned hash join (uniform and skewed keys, with duplicates) implem
 
 Targeted optimisations applied to both variants:
 - Software prefetching on the random-access stream of the scatter (12 iterations ahead) and probe (8 iterations ahead).
-- NUMA first-touch on the partition output buffers via `parallel for schedule(static)` zero-init.
+- NUMA first-touch on the partition output buffers via a custom default-init allocator + parallel `schedule(static)` zero-init: the allocator skips construction so `vector::resize` does not pre-touch the pages, and the parallel loop is the genuine first write that fixes their NUMA placement.
 - Padded per-thread accumulators (`alignas(64)`) to eliminate false sharing in the task-mode reduction.
 
 ---
@@ -162,12 +162,12 @@ Sequential baseline `T_seq = 0.802 s` (mean of 3 runs on the same node).
 
 | Workload | Variant | Best `T` | `T(p)` [s] | Speedup vs `T_seq` | Within-impl. efficiency |
 |----------|---------|----------|------------|--------------------|--------------------------|
-| Uniform  | loop    | 16       | 0.075      | **10.69×**         | 67%                      |
-| Uniform  | task    | 16       | 0.095      | 8.44×              | 53%                      |
-| Skewed   | loop    | 16       | 0.103      | 7.79×              | 31%                      |
-| Skewed   | task    | 8        | 0.094      | **8.55×**          | 67%                      |
+| Uniform  | loop    | 16       | 0.070      | **11.46×**         | 50%                      |
+| Uniform  | task    | 16       | 0.092      | 8.72×              | 37%                      |
+| Skewed   | loop    | 16       | 0.097      | 8.27×              | 33%                      |
+| Skewed   | task    | 8        | 0.094      | **8.53×**          | 67%                      |
 
-Cross-implementation: at `T=16` the loop variant is `1.36×` faster than the Module 2 `std::thread` version (0.075 s vs 0.102 s); at `T=32` (SMT saturation) the two implementations converge.
+Cross-implementation: at `T=16` the loop variant is `1.46×` faster than the Module 2 `std::thread` version (0.070 s vs 0.102 s); at `T=32` the OpenMP loop and Module 2 land within `0.003` s.
 
 Full numbers, plots and per-phase breakdown: see `report/report.pdf`.
 

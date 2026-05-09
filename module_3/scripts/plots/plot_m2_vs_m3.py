@@ -1,9 +1,5 @@
-"""Direct Mod2 (std::thread) vs Mod3 (OpenMP) comparison: time + speedup."""
-
 import os
-
 import matplotlib
-
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -19,7 +15,7 @@ except OSError:
     plt.rcParams["axes.grid"] = True
 
 THREADS_SEL_M3 = [1, 2, 4, 8, 16, 20, 32]
-THREADS_SEL_M2 = [1, 2, 4, 8, 16]  # M2 CSV may not include T=20,32
+THREADS_SEL_M2 = [1, 2, 4, 8, 16]
 
 df3 = pd.read_csv(M3_CSV)
 df3 = df3[(df3["workload"] == "uniform") & (df3["threads"].isin(THREADS_SEL_M3))]
@@ -43,7 +39,6 @@ task_t1 = task_sub[task_sub["threads"] == 1]["t_total_s"].values[0]
 
 fig, axes = plt.subplots(3, 1, figsize=(8, 7.5))
 
-# (a) absolute time
 ax = axes[0]
 ax.plot(
     m2_t, m2_time, color="C2", linestyle=":", marker="^", linewidth=1.5,
@@ -69,8 +64,7 @@ ax.set_title("(a) Absolute time, NR=10M NS=20M uniform", fontsize=10)
 ax.tick_params(labelsize=9)
 ax.legend(fontsize=9)
 
-# (b) speedup vs shared seq baseline
-T_SEQ = 0.802  # current hashjoin_seq mean (mean of 3 runs)
+T_SEQ = 0.802
 
 ax = axes[1]
 ideal_x = [t for t in THREADS_SEL_M3 if t <= 16]
@@ -94,7 +88,6 @@ ax.tick_params(labelsize=9)
 ax.set_ylim(0, 22)
 ax.legend(fontsize=9, loc="upper left")
 
-# (c) efficiency = speedup / T
 ax = axes[2]
 ax.axhline(y=1.0, color="grey", linestyle="--", linewidth=1.0,
            label="Ideal", alpha=0.6)

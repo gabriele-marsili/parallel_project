@@ -9,9 +9,7 @@
 #include "join_phases.hpp"
 #include "verifier.hpp"
 
-// Loop-variant partitioning: histogram and scatter as worksharing for-loops
-// with schedule(static). Owns its own parallel region; t_hist and t_scatter
-// return the per-phase wall-clock seconds.
+// Histogram + scatter as worksharing for-loops, schedule(static).
 static void compute_phases(
     std::uint32_t P,
     const std::vector<Record> &relation,
@@ -111,14 +109,10 @@ static void compute_phases(
     t_scatter = s_end - s_start;
 }
 
-// Task-variant partitioning: histogram and scatter expressed as T explicit
-// tasks per phase, each handling a contiguous chunk [(N*t)/T, (N*(t+1))/T).
-// This mirrors the iteration distribution of schedule(static) but routes the
-// work through the OpenMP task model, so the loop-vs-task comparison covers
-// every phase rather than the join only. The shared cursors[t] and
-// local_hists[t] arrays are indexed by the captured task index t (not by
-// omp_get_thread_num), which keeps the histogram counts and the scatter
-// offsets consistent regardless of which thread picks up a given task.
+// Histogram + scatter as T explicit tasks per phase, chunk [N*t/T, N*(t+1)/T).
+// local_hists[t] and cursors[t] are indexed by the captured task index t, not
+// by omp_get_thread_num(), so counts and offsets stay consistent regardless of
+// which thread picks up each task.
 static void compute_phases_tasks(
     std::uint32_t P,
     const std::vector<Record> &relation,
@@ -214,7 +208,6 @@ static void compute_phases_tasks(
     t_scatter = s_end - s_start;
 }
 
-// Loop-level version: parallel for over partitions in the join phase.
 JoinResult run_loop(
     const std::vector<Record> &R,
     const std::vector<Record> &S,
@@ -260,9 +253,6 @@ JoinResult run_loop(
     return JoinResult{join_count, checksum1, checksum2};
 }
 
-// Task version: same partitioning, explicit OpenMP tasks for the join with
-// LPT submission and a hot-partition split.
-
 // One cache line per slot rules out false sharing on the per-thread reduction.
 struct alignas(64) PaddedResult { JoinResult r{}; };
 static_assert(sizeof(PaddedResult) == 64,
@@ -278,10 +268,6 @@ JoinResult run_task(
 {
     const unsigned shift = compute_shift(P);
 
-    // Histogram and scatter use compute_phases_tasks, which expresses the same
-    // chunked iteration distribution through explicit OpenMP tasks rather than
-    // a worksharing for-loop. This keeps the task variant task-based across
-    // all three phases of the algorithm.
     compute_phases_tasks(P, R, shift, Rpart, timing.histogram_R, timing.scatter_R);
     compute_phases_tasks(P, S, shift, Spart, timing.histogram_S, timing.scatter_S);
 
@@ -450,8 +436,11 @@ int main(int argc, char **argv)
     Rpart.data.resize(NR);
     Spart.data.resize(NS);
 
-    // First-touch placement: each scatter buffer page is paid for by the
-    // thread that will later read and write it during the join.
+    // First-touch the partition buffers in parallel so each page lands on
+    // the NUMA node of the thread that will later scatter into it. The
+    // PartitionedRelation::data allocator skips construction, so resize()
+    // above leaves the pages untouched and this loop is the real first
+    // write that fixes the placement.
     #pragma omp parallel for schedule(static)
     for (std::size_t i = 0; i < NR; ++i) Rpart.data[i].key = 0;
     #pragma omp parallel for schedule(static)

@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
-# validate.sh — correctness matrix for loop and task modes
-#
-# Tests: {uniform, skewed} × threads ∈ {1,2,4,8,16}
-#   - uniform : compare triple vs hashjoin_seq (ground truth)
-#   - skewed  : compare triple vs t=1 same mode (seq has no skew support)
-#   - cross   : loop t=4 == task t=4 on uniform
-#
-# Output: results/validation_loop.log  results/validation_task.log
+# Correctness matrix: (loop|task) x (uniform|skewed) x threads, plus cross-mode
+# (loop t=4 vs task t=4) on both workloads. Uniform is checked against the
+# sequential baseline; skewed is checked against the same mode at t=1, since
+# the sequential binary has no skew support.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -15,7 +11,7 @@ SEQ=./hashjoin_seq
 OMP=./hashjoin_omp
 
 if [ ! -x "$SEQ" ] || [ ! -x "$OMP" ]; then
-    echo "ERROR: binaries not found. Run 'make' first." >&2
+    echo "binaries not found; run make first" >&2
     exit 1
 fi
 
@@ -30,8 +26,6 @@ THREADS=(1 2 4 8 16)
 
 LOG_LOOP=results/validation_loop.log
 LOG_TASK=results/validation_task.log
-
-# ── helpers ──────────────────────────────────────────────────────────────────
 
 get_triple() {
     echo "$1" | grep -E "^(join_count|checksum1|checksum2)=" | sort
@@ -48,8 +42,6 @@ run_seq() {
     $SEQ -nr $NR -ns $NS -seed $SEED -max-key $MAX_KEY -p $P 2>/dev/null
 }
 
-# ── validate one mode ─────────────────────────────────────────────────────────
-
 validate_mode() {
     local MODE=$1 LOG=$2
     local ERRORS=0
@@ -57,7 +49,6 @@ validate_mode() {
     { echo "=== Validation started: $(date) ==="; echo "mode=$MODE NR=$NR NS=$NS P=$P SEED=$SEED"; } \
         | tee "$LOG"
 
-    # --- uniform: seq is ground truth ---
     local SEQ_OUT SEQ_REF
     SEQ_OUT=$(run_seq)
     SEQ_REF=$(get_triple "$SEQ_OUT")
@@ -79,7 +70,6 @@ validate_mode() {
         printf "  t=%-3d %s\n" "$T" "$STATUS" | tee -a "$LOG"
     done
 
-    # --- skewed rho=0.9 hot=4: t=1 same mode is reference ---
     local SREF
     SREF=$(get_triple "$(run_omp "$MODE" 1 0.9 4)")
 
@@ -100,7 +90,6 @@ validate_mode() {
         printf "  t=%-3d %s\n" "$T" "$STATUS" | tee -a "$LOG"
     done
 
-    # --- cross-mode: loop t=4 == task t=4 (uniform) ---
     echo "" | tee -a "$LOG"
     echo "--- cross-mode: loop vs task  t=4  workload=uniform ---" | tee -a "$LOG"
     local LOOP_T TASK_T
@@ -114,6 +103,18 @@ validate_mode() {
     fi
 
     echo "" | tee -a "$LOG"
+    echo "--- cross-mode: loop vs task  t=4  workload=skewed ---" | tee -a "$LOG"
+    local LOOP_S TASK_S
+    LOOP_S=$(get_triple "$(run_omp loop 4 0.9 4)")
+    TASK_S=$(get_triple "$(run_omp task 4 0.9 4)")
+    if [ "$LOOP_S" = "$TASK_S" ]; then
+        echo "  PASS" | tee -a "$LOG"
+    else
+        echo "  FAIL [loop: $(echo "$LOOP_S" | tr '\n' '  ')] [task: $(echo "$TASK_S" | tr '\n' '  ')]" | tee -a "$LOG"
+        ERRORS=$((ERRORS + 1))
+    fi
+
+    echo "" | tee -a "$LOG"
     if [ "$ERRORS" -eq 0 ]; then
         echo "=== $MODE VALIDATION: ALL PASS ===" | tee -a "$LOG"
     else
@@ -122,8 +123,6 @@ validate_mode() {
 
     return $ERRORS
 }
-
-# ── run both modes ────────────────────────────────────────────────────────────
 
 TOTAL=0
 validate_mode loop "$LOG_LOOP" || TOTAL=$((TOTAL + $?))
