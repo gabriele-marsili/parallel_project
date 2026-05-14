@@ -1,0 +1,4 @@
+  seq uniform run=1 t=4.516552
+  seq uniform run=2 t=4.517516
+  seq uniform run=3 t=4.505685
+wrote results/seq_baseline.csv

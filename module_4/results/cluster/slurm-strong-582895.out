@@ -1,0 +1,82 @@
+strong NR=50000000 NS=100000000 P=256 REPS=5 nodes=1 2 4 8
+  mpi    uniform nodes=1 ranks=32 run=1
+  mpi    uniform nodes=1 ranks=32 run=2
+  mpi    uniform nodes=1 ranks=32 run=3
+  mpi    uniform nodes=1 ranks=32 run=4
+  mpi    uniform nodes=1 ranks=32 run=5
+  hybrid uniform nodes=1 ranks=1 threads=32 run=1
+  hybrid uniform nodes=1 ranks=1 threads=32 run=2
+  hybrid uniform nodes=1 ranks=1 threads=32 run=3
+  hybrid uniform nodes=1 ranks=1 threads=32 run=4
+  hybrid uniform nodes=1 ranks=1 threads=32 run=5
+  mpi    skewed  nodes=1 ranks=32 run=1
+  mpi    skewed  nodes=1 ranks=32 run=2
+  mpi    skewed  nodes=1 ranks=32 run=3
+  mpi    skewed  nodes=1 ranks=32 run=4
+  mpi    skewed  nodes=1 ranks=32 run=5
+  hybrid skewed  nodes=1 ranks=1 threads=32 run=1
+  hybrid skewed  nodes=1 ranks=1 threads=32 run=2
+  hybrid skewed  nodes=1 ranks=1 threads=32 run=3
+  hybrid skewed  nodes=1 ranks=1 threads=32 run=4
+  hybrid skewed  nodes=1 ranks=1 threads=32 run=5
+  mpi    uniform nodes=2 ranks=64 run=1
+  mpi    uniform nodes=2 ranks=64 run=2
+  mpi    uniform nodes=2 ranks=64 run=3
+  mpi    uniform nodes=2 ranks=64 run=4
+  mpi    uniform nodes=2 ranks=64 run=5
+  hybrid uniform nodes=2 ranks=2 threads=32 run=1
+  hybrid uniform nodes=2 ranks=2 threads=32 run=2
+  hybrid uniform nodes=2 ranks=2 threads=32 run=3
+  hybrid uniform nodes=2 ranks=2 threads=32 run=4
+  hybrid uniform nodes=2 ranks=2 threads=32 run=5
+  mpi    skewed  nodes=2 ranks=64 run=1
+  mpi    skewed  nodes=2 ranks=64 run=2
+  mpi    skewed  nodes=2 ranks=64 run=3
+  mpi    skewed  nodes=2 ranks=64 run=4
+  mpi    skewed  nodes=2 ranks=64 run=5
+  hybrid skewed  nodes=2 ranks=2 threads=32 run=1
+  hybrid skewed  nodes=2 ranks=2 threads=32 run=2
+  hybrid skewed  nodes=2 ranks=2 threads=32 run=3
+  hybrid skewed  nodes=2 ranks=2 threads=32 run=4
+  hybrid skewed  nodes=2 ranks=2 threads=32 run=5
+  mpi    uniform nodes=4 ranks=128 run=1
+  mpi    uniform nodes=4 ranks=128 run=2
+  mpi    uniform nodes=4 ranks=128 run=3
+  mpi    uniform nodes=4 ranks=128 run=4
+  mpi    uniform nodes=4 ranks=128 run=5
+  hybrid uniform nodes=4 ranks=4 threads=32 run=1
+  hybrid uniform nodes=4 ranks=4 threads=32 run=2
+  hybrid uniform nodes=4 ranks=4 threads=32 run=3
+  hybrid uniform nodes=4 ranks=4 threads=32 run=4
+  hybrid uniform nodes=4 ranks=4 threads=32 run=5
+  mpi    skewed  nodes=4 ranks=128 run=1
+  mpi    skewed  nodes=4 ranks=128 run=2
+  mpi    skewed  nodes=4 ranks=128 run=3
+  mpi    skewed  nodes=4 ranks=128 run=4
+  mpi    skewed  nodes=4 ranks=128 run=5
+  hybrid skewed  nodes=4 ranks=4 threads=32 run=1
+  hybrid skewed  nodes=4 ranks=4 threads=32 run=2
+  hybrid skewed  nodes=4 ranks=4 threads=32 run=3
+  hybrid skewed  nodes=4 ranks=4 threads=32 run=4
+  hybrid skewed  nodes=4 ranks=4 threads=32 run=5
+  mpi    uniform nodes=8 ranks=256 run=1
+  mpi    uniform nodes=8 ranks=256 run=2
+  mpi    uniform nodes=8 ranks=256 run=3
+  mpi    uniform nodes=8 ranks=256 run=4
+  mpi    uniform nodes=8 ranks=256 run=5
+  hybrid uniform nodes=8 ranks=8 threads=32 run=1
+  hybrid uniform nodes=8 ranks=8 threads=32 run=2
+  hybrid uniform nodes=8 ranks=8 threads=32 run=3
+  hybrid uniform nodes=8 ranks=8 threads=32 run=4
+  hybrid uniform nodes=8 ranks=8 threads=32 run=5
+  mpi    skewed  nodes=8 ranks=256 run=1
+  mpi    skewed  nodes=8 ranks=256 run=2
+  mpi    skewed  nodes=8 ranks=256 run=3
+  mpi    skewed  nodes=8 ranks=256 run=4
+  mpi    skewed  nodes=8 ranks=256 run=5
+  hybrid skewed  nodes=8 ranks=8 threads=32 run=1
+  hybrid skewed  nodes=8 ranks=8 threads=32 run=2
+  hybrid skewed  nodes=8 ranks=8 threads=32 run=3
+  hybrid skewed  nodes=8 ranks=8 threads=32 run=4
+  hybrid skewed  nodes=8 ranks=8 threads=32 run=5
+wrote results/strong_scaling.csv (81 lines)
