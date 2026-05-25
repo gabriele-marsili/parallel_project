@@ -104,6 +104,8 @@ static JoinResult partitioned_hash_join_sequential(const std::vector<Record>& R,
 
 int main(int argc, char** argv) {
     std::uint64_t nr = 0, ns = 0, seed = 0, max_key = 0, p = 0;
+    double skew = 0.0;
+    std::uint64_t hot = 4;
 
     if (!read_arg_u64(argc, argv, "-nr", nr) ||
         !read_arg_u64(argc, argv, "-ns", ns) ||
@@ -113,6 +115,8 @@ int main(int argc, char** argv) {
         usage_seq(argv[0]);
         return 1;
     }
+    read_arg_double(argc, argv, "-skew", skew);
+    read_arg_u64(argc, argv, "-hot", hot);
 
     const std::uint32_t P = static_cast<std::uint32_t>(p);
     if (!is_power_of_two(P)) { std::cerr << "Error: P must be a power of two.\n"; return 1; }
@@ -120,8 +124,16 @@ int main(int argc, char** argv) {
     const std::size_t NR = static_cast<std::size_t>(nr);
     const std::size_t NS = static_cast<std::size_t>(ns);
 
-    const auto R = generate_relation(NR, seed, max_key);
-    const auto S = generate_relation(NS, seed ^ 0xdeadebdecdeedef1ULL, max_key);
+    std::vector<Record> R, S;
+    if (skew > 0.0) {
+        R = generate_skewed_relation(NR, seed, max_key, P, skew,
+                                     static_cast<std::uint32_t>(hot));
+        S = generate_skewed_relation(NS, seed ^ 0xdeadebdecdeedef1ULL, max_key, P, skew,
+                                     static_cast<std::uint32_t>(hot));
+    } else {
+        R = generate_relation(NR, seed, max_key);
+        S = generate_relation(NS, seed ^ 0xdeadebdecdeedef1ULL, max_key);
+    }
 
     // Pre-allocate output buffers outside the timed region so that scatter
     // only measures data movement, not heap allocation (~240 MB for NR=10M).
@@ -138,7 +150,7 @@ int main(int argc, char** argv) {
     // Standard output (machine-parseable)
     std::cout << "NR=" << NR << " NS=" << NS << " P=" << P
               << " seed=" << seed << " max_key=" << max_key
-              << " threads=1\n";
+              << " threads=1 skew=" << skew << " hot=" << hot << "\n";
     std::cout << "join_count=" << result.join_count << "\n";
     std::cout << "checksum1="  << result.checksum1  << "\n";
     std::cout << "checksum2="  << result.checksum2  << "\n";

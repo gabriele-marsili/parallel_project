@@ -26,20 +26,30 @@ MAX_KEY=${MAX_KEY:-25000000}
 P=${P:-256}
 REPS=${REPS:-5}
 
-CSV=results/seq_baseline.csv
-echo "workload,nr,ns,p,run_id,t_total_s,join_count,checksum1,checksum2" > "$CSV"
+RHO=${RHO:-0.9}
+HOT=${HOT:-4}
 
-for ((RID=1; RID<=REPS; RID++)); do
-    OUT=$(mktemp)
-    srun --nodes=1 --ntasks=1 --cpus-per-task=1 $SEQ \
-        -nr $NR -ns $NS -seed $SEED -max-key $MAX_KEY -p $P >"$OUT" 2>/dev/null
-    JC=$(awk -F= '/^join_count=/{print $2}' "$OUT")
-    C1=$(awk -F= '/^checksum1=/{print $2}' "$OUT")
-    C2=$(awk -F= '/^checksum2=/{print $2}' "$OUT")
-    T=$(awk -F=  '/^time_sec=/{print $2}'  "$OUT")
-    echo "uniform,$NR,$NS,$P,$RID,$T,$JC,$C1,$C2" >> "$CSV"
-    rm -f "$OUT"
-    printf "  seq uniform run=%d t=%s\n" "$RID" "$T"
-done
+CSV=results/seq_baseline.csv
+echo "workload,rho,hot,nr,ns,p,run_id,t_total_s,join_count,checksum1,checksum2" > "$CSV"
+
+run_one() {
+    local LABEL=$1; local SKEW=$2; local HOTQ=$3
+    for ((RID=1; RID<=REPS; RID++)); do
+        OUT=$(mktemp)
+        srun --nodes=1 --ntasks=1 --cpus-per-task=1 $SEQ \
+            -nr $NR -ns $NS -seed $SEED -max-key $MAX_KEY -p $P \
+            -skew $SKEW -hot $HOTQ >"$OUT" 2>/dev/null
+        JC=$(awk -F= '/^join_count=/{print $2}' "$OUT")
+        C1=$(awk -F= '/^checksum1=/{print $2}' "$OUT")
+        C2=$(awk -F= '/^checksum2=/{print $2}' "$OUT")
+        T=$(awk -F=  '/^time_sec=/{print $2}'  "$OUT")
+        echo "$LABEL,$SKEW,$HOTQ,$NR,$NS,$P,$RID,$T,$JC,$C1,$C2" >> "$CSV"
+        rm -f "$OUT"
+        printf "  seq %s run=%d t=%s\n" "$LABEL" "$RID" "$T"
+    done
+}
+
+run_one uniform 0.0 0
+run_one skewed  $RHO $HOT
 
 echo "wrote $CSV"

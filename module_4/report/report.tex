@@ -118,11 +118,10 @@ compares the global $(\textit{join\_count},\textit{ck}_1,
 \textit{ck}_2)$ to an $O(N^2)$ naive join. For larger uniform
 inputs the same triple is compared to the sequential baseline of
 Module~3 across rank counts $R\in\{1,2,4,8\}$ on the laptop and
-\{32,64,128\} ranks on the cluster. For skewed inputs the
-sequential M3 binary does not accept the skew flags, so the
-distributed runs are cross-checked against a single-rank MPI run
-using the same parameters. All 36 local cases and all 18 cluster
-cases passed; the validation logs are stored in
+\{32,64,128\} ranks on the cluster. The sequential binary now
+accepts \texttt{-skew} and \texttt{-hot}, so the same triple
+comparison covers the skewed case as well. All 36 local cases and
+all 18 cluster cases passed; the validation logs are stored in
 \texttt{results/validation\_local.log} and
 \texttt{results/cluster/validation\_cluster.log}.
 
@@ -144,9 +143,14 @@ The sequential baseline used for speedup is the Module~3
 sequential binary, recompiled with \texttt{-march=ivybridge} (the
 compute-node ISA, which does not support the AVX2 produced by
 \texttt{-march=native} on the Haswell login node) and timed on a
-dedicated compute node. The reference time is
-$t_{\text{seq}}=\SI{4.52}{s}$ for $N_R=\SI{50}{M}$,
-$N_S=\SI{100}{M}$.
+dedicated compute node. Two reference times are used, one per
+workload: $t_{\text{seq}}^{\text{unif}}=\SI{4.52}{s}$ on uniform
+input and $t_{\text{seq}}^{\text{skew}}=\SI{2.46}{s}$ on the
+skewed input ($\rho=0.9$, four hot keys), both for
+$N_R=\SI{50}{M}$, $N_S=\SI{100}{M}$. The skewed baseline is
+substantially lower because four hot keys collapse the join
+output to about $36$~M matches versus $200$~M for uniform,
+shrinking the join phase accordingly.
 
 \subsection{Strong Scaling}
 Figure~\ref{fig:strong} reports the speedup as a function of node
@@ -170,15 +174,20 @@ both the \SI{0.68}{s} fast mode and the eight-node \SI{0.63}{s}
 runs are stable shows that the bandwidth is there; the median
 reflects how often the fast mode is actually picked.
 
-Under the skewed dataset the curves separate further. Pure MPI
-degrades monotonically from $4.4\times$ at one node to $2.8\times$
+Under the skewed dataset, measured against the dedicated skewed
+baseline of \SI{2.46}{s}, the curves separate further. Pure MPI
+degrades monotonically from $2.4\times$ at one node to $1.5\times$
 at eight: every additional rank adds entries to the
 \texttt{Alltoallv} fan-out, but the hot partitions concentrate on
 a small number of receivers, so the collective waits on the
-slowest ranks. The hybrid version still grows, from $2.9\times$
-to $5.1\times$; with at most eight participants the fan-out stays
-small and the work per rank is large enough that load imbalance
-dominates rather than communication latency.
+slowest ranks. The hybrid version still grows, from $1.6\times$
+at one node to $2.8\times$ at eight; with at most eight
+participants the fan-out stays small and the work per rank is
+large enough that load imbalance dominates rather than
+communication latency. The smaller absolute speedups compared to
+the uniform case are partly arithmetic: the skewed baseline is
+$1.8\times$ faster than the uniform one to begin with, so the
+distributed pipeline has less serial work to amortise.
 
 \begin{figure}[t]
   \centering

@@ -30,7 +30,7 @@ def median_by(df: pd.DataFrame, keys: Iterable[str]) -> pd.DataFrame:
 def plot() -> None:
     df = pd.read_csv(STRONG_CSV)
     seq = pd.read_csv(SEQ_CSV)
-    t_seq = seq["t_total_s"].median()
+    t_seq_by_wl = seq.groupby("workload")["t_total_s"].median().to_dict()
 
     med = median_by(df, ["impl", "workload", "nodes"])
     workloads = ["uniform", "skewed"]
@@ -43,6 +43,7 @@ def plot() -> None:
     nodes_all = sorted(df["nodes"].unique())
 
     for ax, wl in zip(axes, workloads):
+        t_seq = t_seq_by_wl.get(wl, t_seq_by_wl["uniform"])
         ax.plot(nodes_all, nodes_all, color="grey", linestyle="--",
                 linewidth=1.0, alpha=0.6, label="Ideale (= N nodi)", zorder=1)
         for impl_key, label, color, ls, marker in series:
