@@ -90,16 +90,15 @@ module_4/
   report/           # LaTeX + figure + PDF finale
 ```
 
-## Riproducibilità della campagna
+## Riprodurre i risultati sul cluster
 
 Build cluster: `bash scripts/deploy_and_run.sh --sync-only` sincronizza
 M4 sul cluster e compila i binari (MPI, ibrido e baseline sequenziale) con
 `-march=ivybridge` (la ISA dei nodi di calcolo, non Haswell come il login). Per la sola validation:
-`bash scripts/deploy_and_run.sh --validate-only`. Per la campagna
-completa (seq baseline + strong + weak + breakdown):
+`bash scripts/deploy_and_run.sh --validate-only`. Per eseguire tutti i
+benchmark (seq baseline + strong + weak + breakdown):
 `bash scripts/deploy_and_run.sh --bench-only`. Il fetch dei CSV verso
 `results/cluster/` avviene con `bash scripts/deploy_and_run.sh --fetch`.
 
 I grafici si rigenerano con `python3 scripts/plots/plot_*.py` e
-finiscono in `report/`. Il report PDF si ricostruisce con
-`(cd report && pdflatex -interaction=nonstopmode report.tex)`.
+finiscono in `report/`.
