@@ -1,6 +1,5 @@
-// Module 4 — Distributed partitioned hash join (MPI only).
-// Pipeline implemented in mpi_pipeline.hpp; this file handles CLI, input
-// generation and final reporting.
+/* pure MPI driver: CLI parsing, input generation and result reporting
+(join pipeline itself in mpi_pipeline.hpp) */
 
 #include <cstdint>
 #include <cstdio>
@@ -19,36 +18,44 @@
 #include "mpi_common.hpp"
 #include "mpi_pipeline.hpp"
 
-static void usage_mpi(const char* prog) {
+static void usage_mpi(const char *prog)
+{
     std::fprintf(stderr,
-        "Usage:\n"
-        "  mpirun -n R %s -nr NR -ns NS -seed SEED -max-key K -p P "
-        "[-skew RHO -hot H]\n",
-        prog);
+                 "Usage:\n"
+                 "  mpirun -n R %s -nr NR -ns NS -seed SEED -max-key K -p P "
+                 "[-skew RHO -hot H]\n",
+                 prog);
 }
 
-// Reduce max of each PhaseTimingMPI field to rank 0 so the breakdown report
-// reflects the slowest rank per phase (the actual bottleneck of the pipeline).
-static PhaseTimingMPI reduce_max_timing(const PhaseTimingMPI& local, MPI_Comm comm) {
+// per-phase max-reduction onto rank 0 so the breakdown sees the slowest rank (actual critical path)
+static PhaseTimingMPI reduce_max_timing(const PhaseTimingMPI &local, MPI_Comm comm)
+{
     const double in[9] = {
         local.histogram_local, local.scatter_local,
-        local.comm_sizes,      local.comm_payload,
-        local.histogram_post,  local.scatter_post,
-        local.join_local,      local.reduce_final,
-        local.total
-    };
+        local.comm_sizes, local.comm_payload,
+        local.histogram_post, local.scatter_post,
+        local.join_local, local.reduce_final,
+        local.total};
     double out[9] = {0};
     MPI_Reduce(in, out, 9, MPI_DOUBLE, MPI_MAX, 0, comm);
+
+    // timing (unpack the reduced maxima back into the struct)
     PhaseTimingMPI t{};
-    t.histogram_local = out[0]; t.scatter_local = out[1];
-    t.comm_sizes      = out[2]; t.comm_payload  = out[3];
-    t.histogram_post  = out[4]; t.scatter_post  = out[5];
-    t.join_local      = out[6]; t.reduce_final  = out[7];
-    t.total           = out[8];
+    t.histogram_local = out[0];
+    t.scatter_local = out[1];
+    t.comm_sizes = out[2];
+    t.comm_payload = out[3];
+    t.histogram_post = out[4];
+    t.scatter_post = out[5];
+    t.join_local = out[6];
+    t.reduce_final = out[7];
+    t.total = out[8];
     return t;
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv)
+{
+    // pure MPI: one thread per rank
     int provided = 0;
     MPI_Init_thread(&argc, &argv, MPI_THREAD_SINGLE, &provided);
 
@@ -62,8 +69,10 @@ int main(int argc, char** argv) {
         !read_arg_u64(argc, argv, "-ns", ns) ||
         !read_arg_u64(argc, argv, "-seed", seed) ||
         !read_arg_u64(argc, argv, "-max-key", max_key) ||
-        !read_arg_u64(argc, argv, "-p", p)) {
-        if (rank == 0) usage_mpi(argv[0]);
+        !read_arg_u64(argc, argv, "-p", p))
+    {
+        if (rank == 0)
+            usage_mpi(argv[0]);
         MPI_Finalize();
         return 1;
     }
@@ -73,11 +82,16 @@ int main(int argc, char** argv) {
 
     const std::uint32_t P = static_cast<std::uint32_t>(p);
     const std::uint32_t R = static_cast<std::uint32_t>(nranks);
-    if (!is_power_of_two(P) || P < R || (P % R) != 0) {
-        if (rank == 0) {
+    
+    //checks:
+    if (!is_power_of_two(P) || P < R || (P % R) != 0)
+    {
+        if (rank == 0)
+        {
             std::fprintf(stderr,
-                "Error: P (%u) must be a power of two, >= nranks (%u), "
-                "and a multiple of nranks.\n", P, R);
+                         "Error: P (%u) must be a power of two, >= nranks (%u), "
+                         "and a multiple of nranks.\n",
+                         P, R);
         }
         MPI_Finalize();
         return 1;
@@ -87,27 +101,32 @@ int main(int argc, char** argv) {
     block_partition(static_cast<std::size_t>(nr), nranks, rank, r_first, r_last);
     block_partition(static_cast<std::size_t>(ns), nranks, rank, s_first, s_last);
 
-    // For the uniform case each rank generates only its slice via splitmix64
-    // skip-ahead so the concatenation equals the sequential generator output
-    // byte-for-byte (GUIDE.md §8). For skewed inputs the hot-key generation
-    // mixes a variable number of PRNG calls per record, so we let each rank
-    // regenerate the full relation deterministically (same seed everywhere)
-    // and then slice it — still bit-equivalent to seq M3, but the working set
-    // is N records on every rank. Generation stays outside the measured region.
+    /*
+    • uniform: each rank generates only its slice via splitmix64 skip-ahead, so
+    the concatenated output matches the sequential generator byte-for-byte.
+
+    • skewed: the initial hot-key selection does a variable number of PRNG draws
+    (rejection sampling), so the per-record skip-ahead offset is unknown and
+    each rank regenerates the full relation and slices it, outside timing */
     std::vector<Record> R_local, S_local;
-    if (skewed) {
+    if (skewed)
+    {
         R_local = generate_skewed_relation_slice(
             static_cast<std::size_t>(nr), r_last - r_first, seed, max_key,
             P, rho, static_cast<std::uint32_t>(hot), r_first);
+        
         S_local = generate_skewed_relation_slice(
             static_cast<std::size_t>(ns), s_last - s_first,
-            seed ^ 0xdeadebdecdeedef1ULL, max_key,
+            seed ^ S_SEED_OFFSET, max_key,
             P, rho, static_cast<std::uint32_t>(hot), s_first);
-    } else {
+    }
+    else //uniform 
+    {
         R_local = generate_relation_slice(
             r_last - r_first, seed, max_key, r_first);
+        
         S_local = generate_relation_slice(
-            s_last - s_first, seed ^ 0xdeadebdecdeedef1ULL, max_key, s_first);
+            s_last - s_first, seed ^ S_SEED_OFFSET, max_key, s_first);
     }
 
     PhaseTimingMPI timing{};
@@ -121,34 +140,39 @@ int main(int argc, char** argv) {
 
     const PhaseTimingMPI tmax = reduce_max_timing(timing, MPI_COMM_WORLD);
 
-    if (rank == 0) {
+    if (rank == 0)
+    {
         std::cout << "NR=" << nr << " NS=" << ns << " P=" << P
                   << " seed=" << seed << " max_key=" << max_key
                   << " ranks=" << nranks
                   << " workload=" << (skewed ? "skewed" : "uniform")
                   << " rho=" << rho << " hot=" << hot << "\n";
         std::cout << "join_count=" << result.join_count << "\n";
-        std::cout << "checksum1="  << result.checksum1  << "\n";
-        std::cout << "checksum2="  << result.checksum2  << "\n";
+        std::cout << "checksum1=" << result.checksum1 << "\n";
+        std::cout << "checksum2=" << result.checksum2 << "\n";
         std::cout << std::fixed << std::setprecision(6);
         std::cout << "time_sec=" << wall << "\n";
         tmax.print(/*rank=*/-1);
     }
 
-    // Tiny-input verification: rank 0 regenerates the full relations and
-    // runs the naive O(N^2) verifier. Kept outside the measured region.
-    if (nr <= 500 && ns <= 500 && rank == 0) {
+        
+    /*naive verifier check for tiny inputs in O(N^2) (uniform only)
+    -> the skewed case is handled by hashjoin_seq
+     */
+    if (!skewed && nr <= 500 && ns <= 500 && rank == 0)
+    {
         const auto R_full = generate_relation(static_cast<std::size_t>(nr),
                                               seed, max_key);
         const auto S_full = generate_relation(static_cast<std::size_t>(ns),
-                                              seed ^ 0xdeadebdecdeedef1ULL,
+                                              seed ^ S_SEED_OFFSET,
                                               max_key);
         const JoinResult naive = naive_join_verifier(R_full, S_full);
         const bool ok = (naive.join_count == result.join_count &&
-                         naive.checksum1  == result.checksum1 &&
-                         naive.checksum2  == result.checksum2);
+                         naive.checksum1 == result.checksum1 &&
+                         naive.checksum2 == result.checksum2);
         std::cout << "naive_verify=" << (ok ? "PASS" : "FAIL") << "\n";
-        if (!ok) {
+        if (!ok)
+        {
             std::cerr << "MISMATCH: naive_count=" << naive.join_count
                       << " mpi_count=" << result.join_count << "\n";
         }

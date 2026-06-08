@@ -1,4 +1,4 @@
-"""Weak scaling efficiency for M4. Per-rank workload constant; rank count grows."""
+"""Weak scaling efficiency for M4. Per-rank workload constant, rank count grows."""
 
 import os
 from typing import Iterable
@@ -27,14 +27,14 @@ def plot() -> None:
     med = median_by(df, ["impl", "nodes"])
 
     series = [
-        ("mpi",    "MPI puro (32 rank/nodo)", "C0", "-",  "o"),
-        ("hybrid", "Hybrid (1 rank/nodo, 32 thr)", "C1", "--", "s"),
+        ("mpi",    "Pure MPI (32 ranks/node)", "C0", "-",  "o"),
+        ("hybrid", "Hybrid (1 rank/node, 32 threads)", "C1", "--", "s"),
     ]
 
     fig, ax = plt.subplots(figsize=(5.5, 3.6))
     nodes_all = sorted(df["nodes"].unique())
     ax.axhline(y=1.0, color="grey", linestyle="--", linewidth=1.0,
-               alpha=0.6, label="Ideale (= 1)", zorder=1)
+               alpha=0.6, label="Ideal (= 1)", zorder=1)
 
     for impl_key, label, color, ls, marker in series:
         sub = med[med["impl"] == impl_key].sort_values("nodes")
@@ -44,14 +44,22 @@ def plot() -> None:
         if len(t1) == 0:
             continue
         eff = t1[0] / sub["t_total_s"].values
-        ax.plot(sub["nodes"].values, eff, color=color, linestyle=ls,
+        nodes = sub["nodes"].values
+        ax.plot(nodes, eff, color=color, linestyle=ls,
                 marker=marker, markersize=6, linewidth=1.6, label=label, zorder=2)
+        # hybrid sits above mpi: label hybrid above its marker, mpi below,
+        # so the two "1.00" points at one node do not overlap.
+        dy = 8 if impl_key == "hybrid" else -13
+        va = "bottom" if dy > 0 else "top"
+        for n, e in zip(nodes, eff):
+            ax.annotate(f"{e:.2f}", (n, e), textcoords="offset points",
+                        xytext=(0, dy), ha="center", va=va, fontsize=7.5, color=color)
 
     ax.set_xscale("log", base=2)
     ax.set_xticks(nodes_all)
     ax.set_xticklabels([str(n) for n in nodes_all])
-    ax.set_xlabel("Nodi", fontsize=10)
-    ax.set_ylabel(r"Efficienza weak  $t_1 / t_N$", fontsize=10)
+    ax.set_xlabel("Nodes", fontsize=10)
+    ax.set_ylabel(r"Weak-scaling efficiency  $t_1 / t_N$", fontsize=10)
     ax.tick_params(labelsize=9)
     ax.set_ylim(0, 1.15)
     ax.legend(fontsize=9, loc="lower left")

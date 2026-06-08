@@ -15,31 +15,22 @@
 %---------------------------------------------------------------
 \section{Introduction}
 %---------------------------------------------------------------
-This report describes the distributed implementation of the
-partitioned hash join developed throughout the previous modules.
-The algorithm is unchanged: $R$ and $S$ are partitioned through a
-common key-mapping function and a local join is performed
-independently on each partition. Viewed as a structured pattern,
-the distributed pipeline is a Map with a partitioned-state local
-reduction followed by a global All-Reduce: each rank applies the
-same build/probe kernel to its share of the data, computes a
-local triple $(\textit{join\_count},\textit{ck}_1,\textit{ck}_2)$,
-and the three values are then combined across ranks with a single
-collective. The aim of this module is to study how communication
-costs interact with local computation when memory bandwidth and
-memory capacity are spread across multiple cluster nodes, and to
-compare the resulting performance with the shared-memory variants
-of Modules~2 and~3.
+Module~4 moves the partitioned hash join of the previous modules
+into distributed memory. The algorithm does not change: $R$ and
+$S$ are partitioned with a shared key-mapping function, each
+partition is joined on its own, and one collective combines the
+per-rank results. With the data spread across nodes, the local
+join now competes with the communication that brings matching
+partitions onto the same rank. This module measures how those two
+costs balance, and how the distributed version compares with the
+shared-memory ones of Modules~2 and~3.
 
-Two implementations are presented. They share the same algorithmic
-skeleton and the same generator scheme as the previous modules: a
-pure MPI version that exchanges partitions via
-\texttt{MPI\_Alltoallv}, and a hybrid MPI+OpenMP version in which
-\emph{every} per-rank phase is parallelised with OpenMP, so that a
-single rank can drive all the cores of a node. All experiments were
-carried out on the SPM cluster (8 compute nodes, dual-socket Intel
-Xeon E5-2640~v2, 32 logical CPUs and \SI{128}{GB} of RAM per node,
-Open MPI~5.0.3).
+Both implementations reuse the kernel and the input
+generator of Modules~2 and~3 without changes, so the only
+difference from the earlier modules is how the work is
+parallelised. The pure MPI version redistributes partitions with
+\texttt{MPI\_Alltoallv}; the hybrid MPI+OpenMP version runs one
+rank per node and parallelises the local phases across its cores.
 
 %---------------------------------------------------------------
 \section{Distributed Algorithm}
@@ -49,81 +40,87 @@ Open MPI~5.0.3).
 The mapping function from Modules~1--3 is unchanged. A 64-bit key
 $k$ is folded to 32~bits and multiplied by the Fibonacci constant,
 $p=((k_{\text{lo}}\oplus k_{\text{hi}})\cdot\varphi_{32})\gg(32-\log_2
-P)$. Each partition is assigned to one of the $R$ MPI ranks by
-$\text{dest}(p)=p\bmod R$ with local index $\ell=p\,\text{div}\,R$
-in $[0,P/R)$. The constraint $P\bmod R=0$ keeps the number of
-partitions per rank exactly balanced.
+P)$. Each partition is assigned to one of the $\mathcal{R}$ MPI ranks by
+$\text{dest}(p)=p\bmod \mathcal{R}$ with local index
+$\ell=p\,\text{div}\,\mathcal{R}$ in $[0,P/\mathcal{R})$. The
+constraint $P\bmod \mathcal{R}=0$ keeps the number of partitions per
+rank exactly balanced.
 
 \subsection{Pipeline}
-Each rank generates only its slice of $R$ and $S$ using
-\texttt{splitmix64} skip-ahead so the concatenation of the local
-slices equals the sequential generator output byte-for-byte. The
-distributed pipeline has eight measured phases:
-\emph{histogram\_local}, \emph{scatter\_local} (in dest-major order
-so each rank's send buffer is naturally contiguous per destination),
-\emph{comm\_sizes} (\texttt{MPI\_Alltoall} of the per-rank counts),
-\emph{comm\_payload} (\texttt{MPI\_Alltoallv} of the records),
-\emph{histogram\_post} and \emph{scatter\_post} (local re-layout of
-the received buffer so the M3 build/probe kernel can be reused
-unchanged), \emph{join\_local}, and the final
-\texttt{MPI\_Allreduce} of the three aggregates
-$(\textit{join\_count},\textit{ck}_1,\textit{ck}_2)$. Each interval
-is preceded by an \texttt{MPI\_Barrier} so the rank-local time
-reflects the actual critical path; the reduction takes the maximum
-across ranks so the breakdown shows the slowest path per phase.
+Each rank generates only its slice of $R$ and $S$ with
+\texttt{splitmix64} skip-ahead: no node ever holds the whole relation,
+there is no initial scatter, and the concatenation of the local slices
+is byte-for-byte the sequential generator output. The distributed
+pipeline has eight measured phases:
+
+\begin{itemize}\itemsep2pt
+  \item \emph{histogram\_local} -- count the local records of $R$ and
+    $S$ into their destination buckets;
+  \item \emph{scatter\_local} -- write the records into the send buffer
+    in dest-major order, so each rank's block is contiguous per
+    destination;
+  \item \emph{comm\_sizes} -- \texttt{MPI\_Alltoall} of the per-rank
+    counts so the receive buffers can be sized exactly;
+  \item \emph{comm\_payload} -- \texttt{MPI\_Alltoallv} of the records;
+  \item \emph{histogram\_post} -- re-count the received buffer by local
+    partition;
+  \item \emph{scatter\_post} -- re-lay the received buffer into
+    per-partition order, so the Module~3 kernel is reused
+    unchanged;
+  \item \emph{join\_local} -- build and probe over the locally owned
+    partitions;
+  \item \emph{reduce\_final} -- \texttt{MPI\_Allreduce} of the three
+    aggregates $(\textit{join\_count},\textit{ck}_1,\textit{ck}_2)$, a
+    tree reduction in $O(\log \mathcal{R})$ rounds.
+\end{itemize}
+
+\noindent Each communication phase is preceded by an
+\texttt{MPI\_Barrier}, and the timer starts only after it. The barrier
+lines up all ranks before the collective, so the measured time is the
+cost of the exchange itself and not the wait for a rank still finishing
+the previous phase. The local phases between two barriers are timed one
+after another. Each phase time is then reduced with a maximum across
+ranks, so the breakdown reports the slowest rank for that phase.
 
 \subsection{Choice of the Redistribution Primitive}
-\texttt{MPI\_Alltoallv} was chosen as the canonical primitive for
-total-exchange of partitioned data (lez.~25). A non-blocking
-alternative based on \texttt{MPI\_Isend/Irecv} was considered: it
-gives more control over communication--computation overlap, but
-the post-exchange phases (\emph{histogram\_post}, \emph{scatter\_post},
-build and probe) all depend on the received buffer, leaving no
-independent local work to hide the collective behind. The
-breakdown measurements of \S\ref{sec:breakdown} also confirm that
-the collective implementation already saturates the network
-bandwidth on the cluster. A small \texttt{MPI\_Alltoall} of the
-per-rank counts precedes each payload exchange so the receive
-buffers can be sized exactly. The final aggregate uses
-\texttt{MPI\_Allreduce} (a tree-based reduction with $O(\log R)$
-rounds, lez.~25) on three 64-bit values, whose cost is below a
-millisecond at every rank count tested.
+The redistribution uses \texttt{MPI\_Alltoallv}. A non-blocking
+\texttt{Isend/Irecv} scheme could overlap the exchange with the work that
+follows it --- \emph{histogram\_post}, \emph{scatter\_post} and the join ---
+by starting on a partition as soon as its records have arrived from every
+sender. The breakdown (\S\ref{sec:breakdown}) shows how little there is
+to gain: on four nodes the post-exchange work is about \SI{100}{ms} in
+pure MPI against a \SI{1.3}{s} wall time ($\sim$7\%), and about
+\SI{120}{ms} of \SI{0.61}{s} for the hybrid ($\sim$19\%). Even that
+small gain would require splitting the single collective into
+per-partition non-blocking exchanges, which lose the internal scheduling
+of the tuned all-to-all and give part of it back before it is realised. A bounded, uncertain gain
+against a certain restructuring of the redistribution: I kept the blocking
+collective and treat the overlap as possible future work (\S\ref{sec:hybrid}).
 
-\subsection{Hybrid MPI+OpenMP}
-The hybrid implementation uses one MPI rank per node and
-\texttt{OMP\_NUM\_THREADS} equal to the number of logical CPUs.
-Every local phase is OpenMP-parallel: \emph{histogram\_local} and
-\emph{histogram\_post} use per-thread private histograms merged at
-the end, \emph{scatter\_local} and \emph{scatter\_post} reuse those
-per-thread histograms to compute per-thread offsets and then write
-into the output buffer with static scheduling, and \emph{join\_local}
-runs a \texttt{parallel for} with \texttt{schedule(dynamic)} and a
-sum reduction. The dynamic schedule on the join mirrors M3's loop
-variant under skewed workloads (lez.~14): partition cardinalities
-vary and a static split would stall the last threads on the
-largest partitions. MPI is initialised with
-\texttt{MPI\_THREAD\_FUNNELED}: only the main thread enters MPI,
-which is the standard choice for funneled hybrid codes because
-\texttt{MPI\_THREAD\_MULTIPLE} requires the implementation to
-serialise internal critical sections and pays a measurable
-overhead even when the application never issues concurrent MPI
-calls.
 
 %---------------------------------------------------------------
 \section{Validation}
 %---------------------------------------------------------------
-Three levels of verification were applied. For tiny inputs
-($N_R, N_S\le 500$) rank~0 regenerates the full relations and
-compares the global $(\textit{join\_count},\textit{ck}_1,
-\textit{ck}_2)$ to an $O(N^2)$ naive join. For larger uniform
-inputs the same triple is compared to the sequential baseline of
-Module~3 across rank counts $R\in\{1,2,4,8\}$ on the laptop and
-\{32,64,128\} ranks on the cluster. The sequential binary now
-accepts \texttt{-skew} and \texttt{-hot}, so the same triple
-comparison covers the skewed case as well. All 36 local cases and
-all 18 cluster cases passed; the validation logs are stored in
-\texttt{results/validation\_local.log} and
-\texttt{results/cluster/validation\_cluster.log}.
+Validation checks the triple
+$(\textit{join\_count},\textit{ck}_1,\textit{ck}_2)$ at small,
+medium and large input sizes. On the small inputs
+($N_R, N_S\le 500$) the result is also checked against a naive join
+that scans every $R$--$S$ pair in $O(N_R N_S)$, counting the
+matches and accumulating the same checksums directly, with no hash
+table and no partitioning. Since this naive join shares no code with the
+kernel, when the two produce the same triple the kernel is almost
+certainly correct: an independent implementation would not reproduce the
+same bug. For every size the
+parallel triple is then compared against the sequential reference
+\texttt{hashjoin\_seq}. The medium and large inputs are checked
+across the whole rank range $\mathcal{R}\in\{1,2,4,8,32,64,128\}$.
+The small inputs run with only $16$ partitions, enough for a few
+hundred records, and since each rank must own at least one
+partition ($P\ge\mathcal{R}$) they are limited to
+$\mathcal{R}\in\{1,2,4,8\}$. The sequential binary accepts \texttt{-skew} and
+\texttt{-hot}, so the same checks cover the skewed workload. All
+$46$ configurations passed, reproducible with
+\texttt{scripts/validate\_cluster.sh}.
 
 %---------------------------------------------------------------
 \section{Experimental Evaluation}
@@ -134,89 +131,131 @@ Strong-scaling, weak-scaling and breakdown runs use $P=256$
 partitions, seed $42$ and $\textit{max\_key}=N_R/2$, with five
 repetitions per cell and the median time reported. Strong scaling
 fixes the global input at $N_R=\SI{50}{M}$ and $N_S=\SI{100}{M}$
-records; weak scaling holds the per-rank workload constant at
-$N_R/R=\SI{2}{M}$ records (with $N_S/R=\SI{4}{M}$). Pure MPI uses
-one rank per logical CPU (32 ranks per node); the hybrid uses one
+records. Weak scaling holds the per-rank workload constant at
+$N_R/\mathcal{R}=\SI{2}{M}$ records (with $N_S/\mathcal{R}=\SI{4}{M}$). Pure MPI uses
+one rank per logical CPU (32 ranks per node). The hybrid uses one
 rank per node with \texttt{OMP\_NUM\_THREADS=32},
 \texttt{OMP\_PROC\_BIND=close} and \texttt{OMP\_PLACES=cores}.
-The sequential baseline used for speedup is the Module~3
-sequential binary, recompiled with \texttt{-march=ivybridge} (the
-compute-node ISA, which does not support the AVX2 produced by
-\texttt{-march=native} on the Haswell login node) and timed on a
-dedicated compute node. Two reference times are used, one per
-workload: $t_{\text{seq}}^{\text{unif}}=\SI{4.52}{s}$ on uniform
-input and $t_{\text{seq}}^{\text{skew}}=\SI{2.46}{s}$ on the
-skewed input ($\rho=0.9$, four hot keys), both for
-$N_R=\SI{50}{M}$, $N_S=\SI{100}{M}$. The skewed baseline is
-substantially lower because four hot keys collapse the join
-output to about $36$~M matches versus $200$~M for uniform,
-shrinking the join phase accordingly.
+The sequential baseline used for speedup is \texttt{hashjoin\_seq} recompiled
+with \texttt{-march=ivybridge} and timed on a dedicated compute node: the
+compute nodes do not support the AVX2 that \texttt{-march=native} emits on
+the login node. Speedup is computed against two baselines, one per workload:
+$t_{\text{seq}}^{\text{unif}}=\SI{4.48}{s}$ on uniform input,
+$t_{\text{seq}}^{\text{skew}}=\SI{2.30}{s}$ on the skewed input
+($\rho=0.9$, four hot keys), both at $N_R=\SI{50}{M}$,
+$N_S=\SI{100}{M}$. The skewed baseline is the lower of the two
+because of memory locality, not output size: with $90\%$ of the
+records falling in four hot partitions (each holding
+$\rho/h+(1-\rho)/P\approx 22.5\%$ of the input), the scatter writes into a
+few near-contiguous streams instead of $256$ scattered ones, and
+the hot hash tables hold few distinct keys and stay cache-resident.
+In the sequential breakdown this shows up mostly in the scatter
+phases, which drop by about $3.4\times$, and to a lesser extent in
+the join.
 
 \subsection{Strong Scaling}
-Figure~\ref{fig:strong} reports the speedup as a function of node
-count. The hybrid variant is the clear winner from two nodes
-upwards on both workloads. On the uniform dataset the hybrid
-speedup grows monotonically from $2.8\times$ at one node to
-$12.2\times$ at eight, crossing the ideal $N$-node line because
-the per-node cost is dominated by collective communication that
-does not grow as fast as the rank count. Pure MPI reaches
-$7.7\times$ at two nodes (64 ranks) and $7.1\times$ at eight (256
-ranks), but at four nodes (128 ranks) it collapses to $3.1\times$.
-The collapse is not measurement noise in the strict sense, but it
-is bimodal across the five repetitions: the minimum is \SI{0.68}{s}
-(in line with the two-node extrapolation), the median is
-\SI{1.48}{s} and four of five runs sit in the slow mode. We
-interpret this as Open MPI's Alltoallv algorithm selection at 128
-ranks: in the slow mode the collective hits a routing pattern that
-the cluster fabric handles poorly, and the choice is not under our
-control without injecting MCA tuning parameters. The fact that
-both the \SI{0.68}{s} fast mode and the eight-node \SI{0.63}{s}
-runs are stable shows that the bandwidth is there; the median
-reflects how often the fast mode is actually picked.
+Figure~\ref{fig:strong} plots the speedup against node count. The
+hybrid is faster than pure MPI from two nodes onwards on both
+workloads. On uniform input the hybrid speedup climbs steadily from
+$2.8\times$ at one node to $12.0\times$ at eight. Pure MPI
+peaks at $7.6\times$ on two nodes (64 ranks) and recovers to
+$7.1\times$ on eight (256 ranks), but on four nodes (128 ranks) it
+collapses to $3.0\times$. The dip is entirely in the payload exchange
+(\texttt{MPI\_Alltoallv}): every other phase is stable, but at four
+nodes this one is slow and erratic, ranging from \SI{0.6}{s} to
+\SI{1.5}{s} across repetitions, while at one or two nodes it is steady.
+What drives it is the rank count, not the node count: the same 128
+ranks spread over eight nodes (16 per node) show the same slow, noisy
+exchange. Forcing Open MPI's basic linear algorithm in place of the
+tuned one, on a fixed node set, makes the exchange stable but uniformly
+slow, so the run-to-run variance comes from the algorithm the library
+selects in this regime, while the cost itself is the 128-way fan-out. At eight nodes
+pure MPI uses 256 ranks, so each rank sends half as much data: the
+exchange settles to about \SI{0.5}{s} and stops fluctuating, and the
+speedup recovers. Table~\ref{tab:strongphase} gives the per-phase
+medians: every local phase scales $7$--$8\times$ from one to eight nodes.
+Of the three communication phases only \emph{comm\_payload} matters, and
+it anti-scales, peaking at four nodes. \emph{comm\_sizes} and
+\emph{reduce\_final} grow too but stay in the milliseconds.
 
-Under the skewed dataset, measured against the dedicated skewed
-baseline of \SI{2.46}{s}, the curves separate further. Pure MPI
-degrades monotonically from $2.4\times$ at one node to $1.5\times$
-at eight: every additional rank adds entries to the
-\texttt{Alltoallv} fan-out, but the hot partitions concentrate on
-a small number of receivers, so the collective waits on the
-slowest ranks. The hybrid version still grows, from $1.6\times$
-at one node to $2.8\times$ at eight; with at most eight
-participants the fan-out stays small and the work per rank is
-large enough that load imbalance dominates rather than
-communication latency. The smaller absolute speedups compared to
-the uniform case are partly arithmetic: the skewed baseline is
-$1.8\times$ faster than the uniform one to begin with, so the
-distributed pipeline has less serial work to amortise.
+Against the skewed baseline of \SI{2.30}{s} pure MPI and the hybrid
+move further apart. Pure MPI never gains from more nodes: it starts
+at $2.2\times$ on one node, falls to $1.2\times$ at four (the
+128-rank regime of the uniform case, made worse by the skew) and
+climbs back only to $1.4\times$ at eight. Adding ranks enlarges the
+\texttt{MPI\_Alltoallv} fan-out, but the hot partitions still land
+on a few receivers that hold up the whole collective, no matter how
+many nodes are used. The hybrid keeps improving, from $1.5\times$ on
+one node to $2.5\times$ on eight, because with at most eight
+participants the fan-out stays small and each rank has enough work
+that the limit is load imbalance, not communication. The speedups
+are also lower simply because the skewed baseline is already
+$1.9\times$ faster than the uniform one, so there is less time to
+save.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{fig_strong.pdf}
-  \caption{Strong scaling on 1, 2, 4, 8 nodes. The dashed
-    grey line marks the ideal $N$-node speedup. $N_R=\SI{50}{M}$,
+  \caption{Strong scaling (speedup vs.\ the sequential baseline) on
+    1, 2, 4, 8 nodes; note the independent $y$-axes. $N_R=\SI{50}{M}$,
     $N_S=\SI{100}{M}$, $P=256$, five repetitions, median reported.}
   \label{fig:strong}
 \end{figure}
 
+\begin{table}[t]
+  \centering\small
+  \setlength{\tabcolsep}{4pt}
+  \caption{Pure MPI per-phase median times [s], uniform strong scaling
+    ($32N$ ranks). \emph{comm\_payload} at four nodes is the erratic
+    phase discussed above; the separate breakdown run of
+    Figure~\ref{fig:breakdown} caught \SI{1.13}{s} for it.}
+  \label{tab:strongphase}
+  \begin{tabular}{lrrrrr}
+    \toprule
+    Phase & $N{=}1$ & $N{=}2$ & $N{=}4$ & $N{=}8$ & $S_{1\to8}$\\
+    \midrule
+    histogram\_local & 0.044 & 0.023 & 0.011 & 0.006 & $7.6\times$\\
+    scatter\_local   & 0.130 & 0.065 & 0.033 & 0.017 & $7.5\times$\\
+    comm\_sizes      & ${<}1$\,ms & 11\,ms & 10\,ms & 13\,ms & ---\\
+    comm\_payload    & 0.092 & 0.293 & 1.35 & 0.532 & $0.17\times$\\
+    histogram\_post  & 0.041 & 0.021 & 0.013 & 0.005 & $7.7\times$\\
+    scatter\_post    & 0.068 & 0.035 & 0.022 & 0.010 & $6.9\times$\\
+    join\_local      & 0.239 & 0.121 & 0.063 & 0.032 & $7.4\times$\\
+    reduce\_final    & ${<}1$\,ms & 2\,ms & 5\,ms & 6\,ms & ---\\
+    \midrule
+    total            & 0.65 & 0.59 & 1.47 & 0.63 & $1.04\times$\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
 \subsection{Weak Scaling}
-Figure~\ref{fig:weak} shows the weak-scaling efficiency $t_1/t_N$
-for the uniform input with a per-rank workload of \SI{2}{M}
-records of $R$ against \SI{4}{M} of $S$. The two implementations
-behave very differently: the hybrid variant retains $0.57$
-efficiency at eight nodes, while pure MPI drops to $0.20$. The
-reason lies in the rank-count growth of the collective. With one
-rank per node the \texttt{Alltoallv} fan-out goes from $8$ pairs
-on a single node to $64$ on eight, and the median payload time
-grows mildly from \SI{15}{ms} to \SI{56}{ms}, a $3.7\times$
-increase against an $8\times$ growth of the global volume. With
-$32$ ranks per node the global rank count grows from $32$ to
-$256$ and the same collective becomes the dominant cost: the
-median payload time goes from \SI{0.12}{s} to \SI{2.99}{s}, a
-$25\times$ increase. The trend follows the textbook
-$\alpha+\beta\,N/R$ model for collectives (lez.~23): once
-$\beta\,N$ saturates the bisection bandwidth, the remaining
-variable is the latency $\alpha$, which scales with the total
-number of participants.
+Figure~\ref{fig:weak} reports the weak-scaling efficiency
+$t_1/t_N$ on uniform input, with a per-rank workload of \SI{2}{M}
+records of $R$ against \SI{4}{M} of $S$. The hybrid scales much
+better than pure MPI: at eight nodes it keeps $0.58$ efficiency,
+while pure MPI drops to $0.21$. The difference comes from how many
+ranks take part in the collective. With one rank per node the
+\texttt{MPI\_Alltoallv} grows from 1 to 8 ranks, and its median time
+rises only from \SI{15}{ms} to \SI{52}{ms} even though
+the global volume grows $8\times$. With 32 ranks per node the rank
+count goes from 32 to 256, and the median payload time rises from
+\SI{0.12}{s} to \SI{3.17}{s}. At one node every transfer is a memory
+copy, so the network comparison starts at two nodes. From two to eight
+nodes the hybrid exchange grows by $1.5\times$ while pure MPI grows by
+$4.7\times$, tracking its rank count ($4\times$). With the Hockney
+latency--bandwidth model $\alpha+\beta m$, a rank in an all-to-all posts
+$\mathcal{R}-1$ messages
+of size $V/\mathcal{R}$ ($V$ the fixed per-rank volume), for a per-rank
+cost of about $(\mathcal{R}-1)\,\alpha+\beta V$: the bandwidth term is
+constant by construction in weak scaling, so what grows is the number of
+message start-ups, linear in $\mathcal{R}$. The hybrid keeps
+$\mathcal{R}$ equal to the node count and stays bandwidth-bound. Pure MPI
+multiplies it by 32 and becomes start-up-bound.
+
+Weak scaling was run on uniform input only. Under skew the fixed
+hot-partition ownership would dominate and grow with $N$, so a
+per-rank-fixed setup would measure that imbalance rather than the
+communication cost it is meant to isolate.
 
 \begin{figure}[t]
   \centering
@@ -227,25 +266,29 @@ number of participants.
 \end{figure}
 
 \subsection{Phase Breakdown}\label{sec:breakdown}
-Figure~\ref{fig:breakdown} stacks the eight measured intervals for
-the four configurations on four nodes. The bars also serve as a
-direct cost comparison between the two implementations on the same
-workload: hybrid uniform totals about \SI{0.52}{s}, pure MPI
-uniform about \SI{1.48}{s}, with the gap accounted almost entirely
-by \emph{comm\_payload}. Pure MPI on uniform spends $92\%$ of the
-wall time in the \texttt{Alltoallv} of 128 ranks, which is
-bandwidth-bound on the cluster network; the four local phases
-together account for around \SI{0.07}{s} because each rank only
-handles a $1/128$ slice of the input. The hybrid variant inverts
-the per-phase distribution: the local phases (now OpenMP-parallel)
-are a few tens of milliseconds each, while \emph{comm\_payload}
-becomes the largest contribution at $44\%$ of the wall time, even
-though the eight-rank collective is much cheaper in absolute terms
-than the 128-rank one. The skewed pure-MPI run spreads the cost
-roughly evenly between communication ($50\%$) and the post-Alltoallv
-phases, reflecting load imbalance on a few hot ranks. The skewed
-hybrid is the worst case for the local join, since the hot
-partitions cluster on three or four ranks out of eight.
+Figure~\ref{fig:breakdown} stacks the eight measured phases for the
+four configurations on four nodes. The bars also compare the two
+implementations directly on the same workload: hybrid uniform takes
+about \SI{0.61}{s} and pure MPI uniform about \SI{1.30}{s}, with
+almost all the gap in \emph{comm\_payload}. Pure MPI on uniform
+spends $88\%$ of the time inside the 128-rank
+\texttt{MPI\_Alltoallv}, and the four local phases add up to only
+about \SI{0.07}{s}, since each rank handles just a $1/128$ slice of
+the input. For the hybrid it is the other way around: the local
+phases (now OpenMP-parallel) take a few tens of milliseconds each,
+and \emph{comm\_payload} is the largest part at $44\%$, even though
+its eight-rank collective is far cheaper in absolute terms than the
+128-rank one. On skewed input pure MPI spends about half its time in
+communication ($50\%$) and most of the rest in the post-exchange
+phases, because a few ranks receive most of the records and their
+re-histogram, re-scatter and join grow accordingly. The
+hybrid is at its worst on skewed in the local join: the four hot keys
+fall in four partitions, so up to all four ranks receive one --- but
+those four partitions hold $90\%$ of the records while the other 252
+share the rest. Inside such a
+rank the hot partition is a single iteration of the
+\texttt{schedule(dynamic)} join loop, so one thread grinds through it
+while the others sit idle, and the join time is set by that one thread.
 
 \begin{figure}[t]
   \centering
@@ -257,25 +300,34 @@ partitions cluster on three or four ranks out of eight.
 \end{figure}
 
 \subsection{Skewed Workload}
-Figure~\ref{fig:skew} compares the total time under uniform and
-skewed inputs across node counts. Hybrid times rise modestly under
-skew (a roughly constant offset of $0.2$--$0.5$\,s) while pure-MPI
-skewed times grow monotonically with $N$ instead of shrinking.
-The distributed setting amplifies the load imbalance that the M3
-task variant could absorb on a single shared-memory node. The
-underlying issue is the one a partitioned-state farm always faces
-when the input distribution is skewed: hashing balances the
-\emph{number} of partitions perfectly across ranks, but it
-cannot balance the \emph{volume} of records per partition, so a
-few heavy partitions concentrate on a handful of receivers and
-the global step waits on them. When the hot partitions live on
-three or four ranks out of 256, the final \texttt{Allreduce} pays
-the cost of the most-loaded rank, and that rank's local join
-takes the same time it would on a single-node OpenMP run. A
-partition-aware mapping that splits the heaviest partitions
-across multiple ranks (so the per-rank work is bounded by the
-average rather than the maximum) would mitigate this and is left
-as future work.
+Figure~\ref{fig:skew} compares the total time on the two workloads
+across node counts. Under skew the hybrid slows down only a little,
+by up to about $0.5$\,s at eight nodes. Pure MPI does worse: its
+skewed time does not fall with $N$ but peaks at four nodes and stays
+well above the one-node time. The distributed setting struggles where
+Module~3 did not because the imbalance can no longer be balanced away.
+On a single shared-memory node the \texttt{dynamic} schedule let any
+idle thread pick up a heavy partition, since every thread sees every
+partition in the same address space. After the all-to-all each rank
+physically owns its partitions in private memory, so a rank that
+receives the hot partitions cannot hand them off: no other rank holds
+those records. This is the usual problem of a partitioned-state farm
+with hashing, where hashing balances the \emph{number} of partitions
+across ranks but not their \emph{volume}. A few heavy partitions pile up
+on a handful of receivers, and the global step waits for the most-loaded
+one.
+A way to relieve this is to single out the heavy partitions and, instead
+of mapping each to one rank, replicate its build side across a few ranks
+and split its probe side among them, so the heavy join is shared and
+per-rank work stays near the average. The cost is more communication:
+replicating the build side puts the same records on several ranks, so
+part of the join time it saves comes back as extra traffic and memory,
+and the single \texttt{MPI\_Alltoallv} becomes a two-path
+redistribution, one route for the regular partitions and one for the
+heavy ones. I did not implement it. The net gain is uncertain without
+measuring, since whether the saved join time outweighs the added
+communication depends on how concentrated the skew is. It would also
+mean reworking the redistribution, which I deliberately kept simple.
 
 \begin{figure}[t]
   \centering
@@ -288,45 +340,103 @@ as future work.
 %---------------------------------------------------------------
 \section{Discussion}
 %---------------------------------------------------------------
-On a single node the pure-MPI run with 32 ranks completes in
-\SI{0.66}{s} (speedup $6.9\times$ over the sequential M3 baseline),
-while the hybrid with one rank and 32 threads takes \SI{1.61}{s}
-($2.8\times$). The gap closes from two nodes onwards: hybrid takes
-\SI{1.00}{s} at two nodes vs.\ \SI{0.59}{s} for MPI, and from four
-nodes onwards hybrid is faster than pure MPI both in absolute
-terms (\SI{0.61}{s} vs.\ \SI{1.48}{s}) and in worst-case
-predictability. The cross-over is driven by the
-\texttt{Alltoallv} cost: pure MPI keeps the local phases cheap by
-splitting them across 32 ranks per node, but pays an
-ever-increasing communication tax as the global rank count grows;
-the hybrid amortises a small parallelisation overhead in the
-local phases against a much cheaper collective.
+The sequential baseline runs in \SI{4.48}{s}, so on a single node both
+implementations are already well ahead of it: pure MPI with 32 ranks
+finishes in \SI{0.65}{s} ($6.9\times$ the baseline) and the hybrid with
+one rank and 32 threads in \SI{1.61}{s} ($2.8\times$). Between the two,
+pure MPI is the faster at one and two nodes (\SI{0.59}{s} vs.\
+\SI{1.00}{s} at two), but from four nodes onwards the hybrid is faster,
+on both absolute time (\SI{0.61}{s} vs.\ \SI{1.47}{s}) and run-to-run
+variance. The cross-over is driven by the \texttt{MPI\_Alltoallv} cost:
+pure MPI keeps the local phases cheap by splitting them across 32 ranks
+per node, but its communication grows with the total rank count, while
+the hybrid pays a little more on the local phases and in return runs a
+much cheaper collective.
 
-Relative to Module~3's OpenMP loop variant the hybrid M4 binary
-matches the multi-thread shared-memory result at one node (the
-local pipeline is the same as in M3, plus an MPI no-op),
-and from two nodes onwards extends the curve into the
-distributed-memory regime, where M2 and M3 cannot follow at all.
+\subsection{Comparison with previous modules}
+Figure~\ref{fig:xmod} and Tables~\ref{tab:xmod-unif}--\ref{tab:xmod-skew}
+compare Module~4 with the shared-memory joins of Modules 2 and 3, as
+speedup over the same sequential baselines (\SI{4.48}{s} uniform,
+\SI{2.30}{s} skewed).
 
-%---------------------------------------------------------------
-\section*{Conclusions}
-%---------------------------------------------------------------
-The distributed implementation preserves the algorithmic structure
-of the previous modules and re-uses the M3 build/probe kernel
-unchanged. Within the eight-node budget of the cluster the hybrid
-pipeline reaches a $12.2\times$ speedup over the sequential M3
-baseline on uniform input with $0.57$ weak-scaling efficiency,
-beating the $7.7\times$/$0.20$ obtained by pure MPI. The
-breakdown confirms that further speedup is communication-bound:
-\texttt{Alltoallv} is the largest contribution to wall time in
-every multi-node configuration. The hybrid variant pays a
-non-trivial single-node cost for parallelising the local phases
-with OpenMP, but it amortises that cost across nodes and is
-preferable from two nodes onwards.
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=0.9\textwidth]{fig_crossmodule.pdf}
+  \caption{Cross-module speedup over the common sequential baseline
+    (\SI{4.48}{s} uniform, \SI{2.30}{s} skewed).}
+  \label{fig:xmod}
+\end{figure*}
 
-% ------------- Hybrid MPI+OpenMP addendum (1 extra page) -------
-\onecolumn\newpage
-\section*{Addendum: Hybrid MPI+OpenMP}
+\begin{table}[t]
+  \centering\small
+  \caption{Cross-module comparison, uniform workload. Speedup over the
+    \SI{4.48}{s} sequential baseline.}
+  \label{tab:xmod-unif}
+  \begin{tabular}{lrr}
+    \toprule
+    Implementation & Time [s] & Speedup\\
+    \midrule
+    Sequential                      & 4.48 & $1.0\times$\\
+    M2 C++ threads (32t, 1 node)    & 0.53 & $8.4\times$\\
+    M3 OpenMP loop (32t, 1 node)    & 0.44 & $10.1\times$\\
+    M4 pure MPI (1 node, 32 ranks)  & 0.65 & $6.9\times$\\
+    M4 pure MPI (2 nodes, 64 ranks) & 0.59 & $7.6\times$\\
+    M4 hybrid (8 nodes, 256 cores)  & 0.37 & $12.0\times$\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+On uniform input (Table~\ref{tab:xmod-unif}) the shared-memory modules
+are already strong on one node: M2's C++ threads reach $8.4\times$ and
+M3's OpenMP loop $10.1\times$. Both saturate the 32 cores at $8$--$10\times$
+rather than $32\times$, the sub-linear ceiling expected of a hash join,
+whose random probes into the hash tables make it memory-bound: the 32
+threads share one node's memory bandwidth. Pure MPI at one node is slower
+($6.9\times$) because it pays the redistribution it needs for the
+distributed case even when all data is local: the two extra post-exchange
+passes and an intra-node \texttt{MPI\_Alltoallv}, a fixed overhead added
+on top of the same parallel work. Going past one node only shrinks the
+local join, which is already cheap; the collective, the one cost that
+does not shrink, instead grows with the rank count, so by Amdahl's
+argument it caps the speedup. This is why the hybrid at eight nodes
+($12.0\times$) barely beats M3 on one ($10.1\times$): eight times the
+hardware for about $1.2\times$ more speedup. On uniform data, where the
+local join is cheap, distribution buys little.
+
+\begin{table}[t]
+  \centering\small
+  \caption{Cross-module comparison, skewed workload ($\rho=0.9$, four hot
+    keys). Speedup over the \SI{2.30}{s} sequential baseline; Module~2 has
+    no skewed generator.}
+  \label{tab:xmod-skew}
+  \begin{tabular}{lrr}
+    \toprule
+    Implementation & Time [s] & Speedup\\
+    \midrule
+    Sequential                     & 2.30 & $1.0\times$\\
+    M3 OpenMP loop (16t, 1 node)   & 0.37 & $6.2\times$\\
+    M4 pure MPI (1 node, 32 ranks) & 1.03 & $2.2\times$\\
+    M4 hybrid (8 nodes, 256 cores) & 0.90 & $2.5\times$\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+On skewed input (Table~\ref{tab:xmod-skew}) the gap reverses, and the
+reason is load balancing. Hashing balances the \emph{number} of
+partitions per worker but not their \emph{volume}, so the four hot
+partitions carry most of the work. M3's OpenMP loop reaches $6.2\times$
+on one node because its dynamic schedule is free to balance that volume:
+any idle thread can drain a hot partition, since all threads share the
+same memory. Module~4 cannot, because the partitions are pinned to fixed
+ranks in private memory: no rank can offload its hot partition without
+moving data, so the most-loaded rank sets the time and even the hybrid at
+eight nodes ($2.5\times$) stays well below M3 on one. The same imbalance
+that dynamic scheduling hides in shared memory becomes a hard floor under
+distribution, and only the partition-aware remapping discussed for the
+skewed workload would remove it.
+
+% ------------- Hybrid MPI+OpenMP -------------
+\section{Hybrid MPI+OpenMP}\label{sec:hybrid}
 The hybrid configuration uses one MPI rank per node with
 \texttt{OMP\_NUM\_THREADS=32}, \texttt{OMP\_PROC\_BIND=close} and
 \texttt{OMP\_PLACES=cores}. \emph{Every} per-rank phase is
@@ -339,42 +449,58 @@ collide on the same slot of the output buffer, and
 \texttt{schedule(dynamic)} and a sum reduction. The static
 scheduling on the scatter passes mirrors the histogram pass that
 fed it, so the same input range is visited by the same thread in
-both phases.
+both phases. The dynamic schedule on the join follows Module~3's
+loop variant: partition cardinalities vary, and a static split
+would leave the last threads stuck on the largest partitions. MPI
+is initialised with \texttt{MPI\_THREAD\_FUNNELED}: several threads may
+run, but only the main one issues MPI calls. In this code every
+collective is called outside the OpenMP regions, by the main thread
+alone, so that level is enough. The stronger
+\texttt{MPI\_THREAD\_MULTIPLE}, which would let any thread call MPI at
+the same time, makes the library guard its internal state with locks on
+every call to stay thread-safe, an overhead this code has no use for.
 
 \paragraph{Effect on the single-node case.}
-A first version of the hybrid parallelised only \emph{join\_local}
-and left the other four local phases single-threaded. That
-implementation took \SI{6.25}{s} on one node, slower than the
-sequential M3 baseline, because the only rank had to scan all
-\SI{150}{M} records through one CPU pipeline before reaching the
-parallel join. Parallelising all local phases brings the one-node
-hybrid down to \SI{1.61}{s}, a $3.9\times$ improvement, and is
-what makes the multi-node curve of Figure~\ref{fig:strong}
-monotonic. The lesson here is Amdahl (lez.~10): in a hybrid
-pipeline the sequential phase becomes the bottleneck, and
-parallelising the obvious hot loop is not enough on its own.
+A first iteration of the hybrid only parallelised
+\emph{join\_local} and left the four other local phases
+single-threaded. It ran in \SI{6.25}{s} on one node, slower than
+the sequential baseline, because the only rank had to push
+\SI{150}{M} records through one CPU before reaching the parallel
+join. Parallelising every local phase brings the one-node hybrid
+down to \SI{1.61}{s}, $3.9\times$ faster, and is what makes the
+multi-node curve of Figure~\ref{fig:strong} monotonic. The first
+version was Amdahl-bound: the histogram and scatter passes were still
+serial, and that fraction alone held the one-node time above the
+sequential baseline no matter how many threads worked the join. The
+$3.9\times$ came from parallelising those passes, not the join.
 
 \paragraph{Collective cost.}
-Going from 256 ranks (pure MPI on 8 nodes) to 8 ranks (hybrid on
-8 nodes) reduces the median \texttt{Alltoallv} time on uniform
-input from \SI{0.53}{s} to \SI{0.18}{s}, a $3\times$ speedup with
-the same total payload moved. \texttt{Allreduce} of the three
-aggregates is consistently below a millisecond regardless of node
-count because it sees only 1 to 8 participants. The collective
-cost still dominates the wall time of the hybrid (around $44\%$
-at four nodes and growing with $N$), which suggests that the next
-optimisation to consider is communication--computation overlap:
-posting the \texttt{Alltoallv} as a non-blocking
-\texttt{MPI\_Ialltoallv} while the local build step starts on the
-partitions that are already known to be local.
+Dropping from 256 ranks (pure MPI on 8 nodes) to 8 ranks (hybrid
+on 8 nodes) shrinks the median \texttt{MPI\_Alltoallv} on uniform input
+from \SI{0.53}{s} to \SI{0.18}{s}, a $3\times$ gain at the same
+total payload. \texttt{MPI\_Allreduce} on the three aggregates stays
+under a millisecond regardless of node count because it touches
+only 1 to 8 ranks.
 
-\paragraph{Rank-per-socket layout.}
-The compute nodes have two NUMA domains; binding one rank per
-socket (two ranks per node, 16 threads each) would let the local
-join run entirely within one NUMA domain at the cost of doubling
-the \texttt{Alltoallv} fan-out. Given that the local phases are
-now parallel and the wall time is communication-bound, doubling
-the rank count is unlikely to help; the experiment was not run
-within the time budget.
+%---------------------------------------------------------------
+\section*{Conclusions}
+%---------------------------------------------------------------
+The distributed version keeps the algorithmic structure of the
+previous modules and reuses the Module~3 kernel unchanged.
+Within the eight-node budget the hybrid pipeline reaches
+$12.0\times$ over the sequential baseline on uniform input,
+with $0.58$ weak-scaling efficiency, against $7.6\times$ / $0.21$
+for pure MPI. The breakdown points the next bottleneck: further
+speedup is communication-bound, with \texttt{MPI\_Alltoallv} the
+largest contribution to wall time in every multi-node configuration.
+The hybrid pays a non-trivial single-node cost to parallelise the
+local phases, but recovers it from two nodes onwards.
+
+Set against the shared-memory modules, the gains are real but bounded:
+on uniform data eight nodes barely exceed Module~3 on one, and on skewed
+data Module~3's single-node dynamic scheduling stays ahead. The real
+justification for distribution is capacity rather than speed, spreading
+an input too large for one node, which this \SI{1.2}{GB} workload does
+not exercise.
 
 \end{document}

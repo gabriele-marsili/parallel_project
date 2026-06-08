@@ -12,15 +12,15 @@
 # NR/NS fixed; the number of nodes and the rank-vs-thread split vary.
 # Both pure MPI (rank-per-core) and hybrid (rank-per-node × threads) are
 # measured on uniform and skewed inputs. Generation stays outside the
-# measured region — only the join pipeline contributes to t_total.
+# measured region, only the join pipeline contributes to t_total.
 
 set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
 
 MPI=./hashjoin_mpi
 HYB=./hashjoin_mpi_omp
-[ -x "$MPI" ] || { echo "$MPI missing — run make first" >&2; exit 1; }
-[ -x "$HYB" ] || { echo "$HYB missing — run make first" >&2; exit 1; }
+[ -x "$MPI" ] || { echo "$MPI missing, run make first" >&2; exit 1; }
+[ -x "$HYB" ] || { echo "$HYB missing, run make first" >&2; exit 1; }
 
 mkdir -p results
 

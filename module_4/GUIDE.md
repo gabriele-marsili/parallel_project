@@ -10,7 +10,7 @@ Cosa va consegnato:
 
 1. **Implementazione MPI pura** della partitioned hash join.
 2. **Implementazione ibrida MPI+OpenMP** (opzionale per il comando, obbligatoria per noi).
-3. **Baseline sequenziale**: la stessa versione migliorata usata in M3 (`module_3/src/hashjoin_seq.cpp`).
+3. **Baseline sequenziale**: la stessa versione migliorata usata in M3, copiata qui (`src/hashjoin_seq.cpp`) così il modulo è autonomo.
 4. **Correttezza**: `join_count`, `checksum1`, `checksum2` identici al sequenziale per ogni configurazione.
 5. **Esperimenti su spmcluster**: strong e weak scaling su 1, 2, 4, 8 nodi; speedup vs seq; **breakdown** comm/redistribuzione vs local-join.
 6. **Dataset**: uniform (obbligatorio) + skewed (opzionale ma incluso).
@@ -171,7 +171,7 @@ Per garantire che il risultato distribuito sia identico a quello sequenziale dob
 1. **Generazione locale identica**: rank 0 genera tutto, scattera fette ai rank con `MPI_Scatterv`. Garantisce identità, ma include il costo della distribuzione iniziale nel timing — non quello che ci interessa.
 2. **Generazione locale indipendente** con seed offset: ogni rank genera `[r·N/R, (r+1)·N/R)` chiamando `splitmix64_next` con stato iniziale `seed + r·N/R · k` (skip-ahead). `splitmix64` ammette skip-ahead esatto perché `state += 0x9e... · stride` è chiuso. Identità garantita rispetto al seq.
 
-**Scelta**: opzione 2. La generazione resta fuori dalla regione misurata e ogni rank lavora indipendentemente. Il sequenziale resta `module_3/hashjoin_seq` invariato, quindi il confronto è onesto.
+**Scelta**: opzione 2. La generazione resta fuori dalla regione misurata e ogni rank lavora indipendentemente. Il sequenziale è la versione di M3 invariata (copiata in `src/hashjoin_seq.cpp`), quindi il confronto è onesto.
 
 Implementazione skip-ahead per `splitmix64_next`:
 
@@ -261,7 +261,7 @@ module_4/
     fig_skew.pdf, fig_m3_vs_m4.pdf
 ```
 
-Per gli header: **simlink** da `module_4/include/` → `../../module_3/include/*.hpp` per non duplicare. Se la cluster non gestisce bene i symlink via rsync, fallback su `cp` in fase di scaffold.
+Per gli header: **copia** degli header di M3 in `module_4/include/` (più `mpi_common.hpp` e `mpi_pipeline.hpp` propri del modulo), così il modulo compila ed esegue senza dipendere da `module_3`. In fase di scaffold erano symlink; sono stati materializzati in copie reali per rendere la consegna autonoma.
 
 ---
 
@@ -270,11 +270,11 @@ Per gli header: **simlink** da `module_4/include/` → `../../module_3/include/*
 ```make
 MPICXX ?= mpicxx
 CXX    ?= g++
-CXXFLAGS = -O3 -std=c++17 -Wall -Wextra -Wpedantic -march=native
+CXXFLAGS = -O3 -std=c++20 -Wall -Wextra -Wpedantic
 OMPFLAG  = -fopenmp
-INC      = -Iinclude -I../module_3/include
+INC      = -Iinclude
 
-all: hashjoin_mpi hashjoin_mpi_omp
+all: hashjoin_mpi hashjoin_mpi_omp hashjoin_seq
 
 hashjoin_mpi: src/hashjoin_mpi.cpp
 	$(MPICXX) $(CXXFLAGS) $(INC) $< -o $@
@@ -282,12 +282,12 @@ hashjoin_mpi: src/hashjoin_mpi.cpp
 hashjoin_mpi_omp: src/hashjoin_mpi_omp.cpp
 	$(MPICXX) $(CXXFLAGS) $(OMPFLAG) $(INC) $< -o $@
 
-# Convenienza per ricompilare anche il seq baseline di M3
-seq_baseline:
-	$(MAKE) -C ../module_3 hashjoin_seq
+# Baseline sequenziale vendored: niente MPI, compilatore C++ semplice.
+hashjoin_seq: src/hashjoin_seq.cpp
+	$(CXX) $(CXXFLAGS) $(INC) $< -o $@
 
 clean:
-	rm -f hashjoin_mpi hashjoin_mpi_omp
+	rm -f hashjoin_mpi hashjoin_mpi_omp hashjoin_seq
 ```
 
 ---

@@ -1,4 +1,4 @@
-"""Stacked phase breakdown — communication vs local computation."""
+"""Stacked phase breakdown, communication vs local computation."""
 
 import os
 
@@ -47,7 +47,7 @@ def plot() -> None:
 
     ax.set_xticks(x)
     ax.set_xticklabels(labels, fontsize=9)
-    ax.set_ylabel("Tempo (s, median rank-max)", fontsize=10)
+    ax.set_ylabel("Time (s, median rank-max)", fontsize=10)
     ax.tick_params(labelsize=9)
     ax.legend(fontsize=8, loc="center left", bbox_to_anchor=(1.01, 0.5),
               frameon=False)

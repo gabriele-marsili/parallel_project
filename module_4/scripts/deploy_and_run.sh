@@ -12,7 +12,6 @@ cd "$(dirname "$0")/.."
 
 REMOTE="spmcluster"
 REMOTE_DIR="~/module_4"
-REMOTE_M3="~/module_3"
 REPS=${REPS:-3}
 
 DO_SYNC=true
@@ -38,22 +37,16 @@ if $DO_SYNC; then
     ssh -o ConnectTimeout=10 -o BatchMode=yes "$REMOTE" "true" \
         || { echo "cannot reach $REMOTE (VPN? ssh config?)" >&2; exit 1; }
 
-    log "syncing module_4 and module_3 to $REMOTE:$REMOTE_DIR"
-    ssh "$REMOTE" "mkdir -p module_4 module_3"
+    # module_4 is self-contained: vendored seq source + real headers, no module_3.
+    log "syncing module_4 to $REMOTE:$REMOTE_DIR"
+    ssh "$REMOTE" "mkdir -p module_4"
     rsync -av --delete \
           --exclude='hashjoin_mpi' --exclude='hashjoin_mpi_omp' \
+          --exclude='hashjoin_seq' \
           --exclude='*.o' --exclude='.DS_Store' \
           --exclude='results/cluster' \
           --exclude='*.pdf' --exclude='*.aux' --exclude='*.log' \
           ./ "$REMOTE:$REMOTE_DIR/"
-
-    # M3 sequential baseline source (the symlinked headers + the seq main).
-    rsync -av --delete \
-          --exclude='hashjoin_seq' --exclude='hashjoin_omp' \
-          --exclude='*.o' --exclude='.DS_Store' \
-          --exclude='results/cluster' \
-          --exclude='*.pdf' --exclude='*.aux' --exclude='*.log' \
-          ../module_3/ "$REMOTE:$REMOTE_M3/"
 fi
 
 if $DO_BUILD; then
@@ -63,8 +56,8 @@ if $DO_BUILD; then
         # The cluster ships Open MPI 5 wrapper as mpicxx, GCC 12 as g++.
         module load openmpi5 2>/dev/null || true
         export PATH=/opt/ohpc/pub/mpi/openmpi5-gnu12/5.0.3/bin:\$PATH
-        cd $REMOTE_M3 && make hashjoin_seq CXX=g++ EXTRA_CXXFLAGS='-march=native' 2>&1 | tail -3
-        cd $REMOTE_DIR && make clean && make cluster MPICXX=mpicxx 2>&1 | tail -5
+        # 'make cluster' builds mpi, hybrid and the vendored seq baseline together.
+        cd $REMOTE_DIR && make clean && make cluster MPICXX=mpicxx CXX=g++ 2>&1 | tail -5
         ./hashjoin_mpi -nr 200 -ns 200 -seed 1 -max-key 1000 -p 16 2>/dev/null | grep -E 'join_count|naive_verify' || true
     "
 fi

@@ -1,7 +1,6 @@
-// Module 4 — Distributed partitioned hash join (MPI + OpenMP hybrid).
-// Same pipeline as hashjoin_mpi.cpp; the only difference is that this
-// translation unit is compiled with -fopenmp, so mpi_pipeline::run uses the
-// OpenMP-parallel local join loop guarded by `#ifdef _OPENMP`.
+/* distributed partitioned hash join, MPI + OpenMP hybrid.
+same pipeline as hashjoin_mpi.cpp, compiled with -fopenmp so the local
+phases in mpi_pipeline::run take the parallel branches guarded by _OPENMP */
 
 #include <cstdint>
 #include <cstdio>
@@ -21,33 +20,44 @@
 #include "mpi_common.hpp"
 #include "mpi_pipeline.hpp"
 
-static void usage_hybrid(const char* prog) {
+static void usage_hybrid(const char *prog)
+{
     std::fprintf(stderr,
-        "Usage:\n"
-        "  mpirun -n R %s -nr NR -ns NS -seed SEED -max-key K -p P [-t THREADS]\n",
-        prog);
+                 "Usage:\n"
+                 "  mpirun -n R %s -nr NR -ns NS -seed SEED -max-key K -p P [-t THREADS] [-skew RHO -hot H]\n",
+                 prog);
 }
 
-static PhaseTimingMPI reduce_max_timing(const PhaseTimingMPI& local, MPI_Comm comm) {
+// per-phase max-reduction onto rank 0 so the breakdown shows the slowest (critical-path) rank
+static PhaseTimingMPI reduce_max_timing(const PhaseTimingMPI &local, MPI_Comm comm)
+{
     const double in[9] = {
         local.histogram_local, local.scatter_local,
-        local.comm_sizes,      local.comm_payload,
-        local.histogram_post,  local.scatter_post,
-        local.join_local,      local.reduce_final,
-        local.total
-    };
+        local.comm_sizes, local.comm_payload,
+        local.histogram_post, local.scatter_post,
+        local.join_local, local.reduce_final,
+        local.total};
     double out[9] = {0};
     MPI_Reduce(in, out, 9, MPI_DOUBLE, MPI_MAX, 0, comm);
+    
+    //timing 
     PhaseTimingMPI t{};
-    t.histogram_local = out[0]; t.scatter_local = out[1];
-    t.comm_sizes      = out[2]; t.comm_payload  = out[3];
-    t.histogram_post  = out[4]; t.scatter_post  = out[5];
-    t.join_local      = out[6]; t.reduce_final  = out[7];
-    t.total           = out[8];
+    t.histogram_local = out[0];
+    t.scatter_local = out[1];
+    t.comm_sizes = out[2];
+    t.comm_payload = out[3];
+    t.histogram_post = out[4];
+    t.scatter_post = out[5];
+    t.join_local = out[6];
+    t.reduce_final = out[7];
+    t.total = out[8];
     return t;
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv)
+{
+    /* only the main thread issues MPI calls (the collectives run outside the OpenMP regions)
+    => use of FUNNELED cause MULTIPLE would add per-call locking */
     int provided = 0;
     MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
 
@@ -61,12 +71,15 @@ int main(int argc, char** argv) {
         !read_arg_u64(argc, argv, "-ns", ns) ||
         !read_arg_u64(argc, argv, "-seed", seed) ||
         !read_arg_u64(argc, argv, "-max-key", max_key) ||
-        !read_arg_u64(argc, argv, "-p", p)) {
-        if (rank == 0) usage_hybrid(argv[0]);
+        !read_arg_u64(argc, argv, "-p", p))
+    {
+        if (rank == 0)
+            usage_hybrid(argv[0]);
         MPI_Finalize();
         return 1;
     }
-    if (read_arg_u64(argc, argv, "-t", t) && t > 0) {
+    if (read_arg_u64(argc, argv, "-t", t) && t > 0)
+    {
         omp_set_num_threads(static_cast<int>(t));
     }
     read_arg_double(argc, argv, "-skew", rho);
@@ -75,11 +88,16 @@ int main(int argc, char** argv) {
 
     const std::uint32_t P = static_cast<std::uint32_t>(p);
     const std::uint32_t R = static_cast<std::uint32_t>(nranks);
-    if (!is_power_of_two(P) || P < R || (P % R) != 0) {
-        if (rank == 0) {
+    
+    //checks:
+    if (!is_power_of_two(P) || P < R || (P % R) != 0)
+    {
+        if (rank == 0)
+        {
             std::fprintf(stderr,
-                "Error: P (%u) must be a power of two, >= nranks (%u), "
-                "and a multiple of nranks.\n", P, R);
+                         "Error: P (%u) must be a power of two, >= nranks (%u), "
+                         "and a multiple of nranks.\n",
+                         P, R);
         }
         MPI_Finalize();
         return 1;
@@ -90,19 +108,24 @@ int main(int argc, char** argv) {
     block_partition(static_cast<std::size_t>(ns), nranks, rank, s_first, s_last);
 
     std::vector<Record> R_local, S_local;
-    if (skewed) {
+    if (skewed)
+    {
         R_local = generate_skewed_relation_slice(
             static_cast<std::size_t>(nr), r_last - r_first, seed, max_key,
             P, rho, static_cast<std::uint32_t>(hot), r_first);
+        
         S_local = generate_skewed_relation_slice(
             static_cast<std::size_t>(ns), s_last - s_first,
-            seed ^ 0xdeadebdecdeedef1ULL, max_key,
+            seed ^ S_SEED_OFFSET, max_key,
             P, rho, static_cast<std::uint32_t>(hot), s_first);
-    } else {
+    }
+    else //uniform
+    {
         R_local = generate_relation_slice(
             r_last - r_first, seed, max_key, r_first);
+        
         S_local = generate_relation_slice(
-            s_last - s_first, seed ^ 0xdeadebdecdeedef1ULL, max_key, s_first);
+            s_last - s_first, seed ^ S_SEED_OFFSET, max_key, s_first);
     }
 
     PhaseTimingMPI timing{};
@@ -116,7 +139,8 @@ int main(int argc, char** argv) {
 
     const PhaseTimingMPI tmax = reduce_max_timing(timing, MPI_COMM_WORLD);
 
-    if (rank == 0) {
+    if (rank == 0)
+    {
         std::cout << "NR=" << nr << " NS=" << ns << " P=" << P
                   << " seed=" << seed << " max_key=" << max_key
                   << " ranks=" << nranks
@@ -124,25 +148,34 @@ int main(int argc, char** argv) {
                   << " workload=" << (skewed ? "skewed" : "uniform")
                   << " rho=" << rho << " hot=" << hot << "\n";
         std::cout << "join_count=" << result.join_count << "\n";
-        std::cout << "checksum1="  << result.checksum1  << "\n";
-        std::cout << "checksum2="  << result.checksum2  << "\n";
+        std::cout << "checksum1=" << result.checksum1 << "\n";
+        std::cout << "checksum2=" << result.checksum2 << "\n";
         std::cout << std::fixed << std::setprecision(6);
         std::cout << "time_sec=" << wall << "\n";
         tmax.print(/*rank=*/-1);
     }
 
-    if (nr <= 500 && ns <= 500 && rank == 0) {
+    /*
+    • uniform: each rank generates only its slice via splitmix64 skip-ahead, so
+    the concatenated output matches the sequential generator byte-for-byte.
+
+    • skewed: the initial hot-key selection does a variable number of PRNG draws
+    (rejection sampling), so the per-record skip-ahead offset is unknown and
+    each rank regenerates the full relation and slices it, outside timing */
+    if (!skewed && nr <= 500 && ns <= 500 && rank == 0)
+    {
         const auto R_full = generate_relation(static_cast<std::size_t>(nr),
                                               seed, max_key);
         const auto S_full = generate_relation(static_cast<std::size_t>(ns),
-                                              seed ^ 0xdeadebdecdeedef1ULL,
+                                              seed ^ S_SEED_OFFSET,
                                               max_key);
         const JoinResult naive = naive_join_verifier(R_full, S_full);
         const bool ok = (naive.join_count == result.join_count &&
-                         naive.checksum1  == result.checksum1 &&
-                         naive.checksum2  == result.checksum2);
+                         naive.checksum1 == result.checksum1 &&
+                         naive.checksum2 == result.checksum2);
         std::cout << "naive_verify=" << (ok ? "PASS" : "FAIL") << "\n";
-        if (!ok) {
+        if (!ok)
+        {
             std::cerr << "MISMATCH: naive_count=" << naive.join_count
                       << " hybrid_count=" << result.join_count << "\n";
         }

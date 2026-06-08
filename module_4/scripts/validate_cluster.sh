@@ -9,17 +9,18 @@
 #SBATCH --exclusive
 
 # Cluster correctness: confirm that (join_count, checksum1, checksum2) match
-# the M3 sequential baseline across rank counts and workloads, including
-# multi-node runs that the laptop cannot exercise.
+# the sequential reference (hashjoin_seq) across the full rank range and both
+# workloads, all on the cluster: small rank counts (R=1,2,4,8) on a single
+# node for the edge cases, and R=32,64,128 across 1/2/4 nodes for scale.
 
 set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
 
 MPI=./hashjoin_mpi
 HYB=./hashjoin_mpi_omp
-SEQ=../module_3/hashjoin_seq
+SEQ=./hashjoin_seq
 
-[ -x "$SEQ" ] || (cd ../module_3 && make hashjoin_seq) >/dev/null
+[ -x "$SEQ" ] || make hashjoin_seq >/dev/null
 
 mkdir -p results
 LOG=results/validation_cluster.log
@@ -39,28 +40,37 @@ fail=0; ok=0
 run_case() {
     local TAG=$1 NR=$2 NS=$3 SEED=$4 MAXK=$5 P=$6 SKEW=$7 HOT=$8
     local args="-nr $NR -ns $NS -seed $SEED -max-key $MAXK -p $P"
-    local ref_label="seq"
-    local ref_out
     if [ "$SKEW" != "0" ]; then
-        # M3's sequential reference doesn't accept -skew/-hot, so for skewed
-        # inputs we use the MPI binary with one rank as the authoritative
-        # reference — by construction it executes the same algorithm and uses
-        # the same generator as the multi-rank configs.
         args="$args -skew $SKEW -hot $HOT"
-        ref_label="mpi R=1"
-        ref_out=$(srun --nodes=1 --ntasks=1 --mpi=pmix $MPI $args 2>/dev/null | grep_results)
-    else
-        ref_out=$($SEQ $args 2>/dev/null | grep_results)
     fi
+    # hashjoin_seq is the independent reference for both workloads: it accepts
+    # -skew/-hot and uses the same generator as the MPI binaries. On small
+    # inputs it also self-checks against an O(N^2) naive join.
+    local ref_raw ref_out
+    ref_raw=$($SEQ $args 2>/dev/null)
+    ref_out=$(echo "$ref_raw" | grep_results)
 
     {
         printf "\n[%s] NR=%s NS=%s seed=%s maxk=%s P=%s skew=%s hot=%s\n" \
                "$TAG" "$NR" "$NS" "$SEED" "$MAXK" "$P" "$SKEW" "$HOT"
-        printf "  %-12s  : %s\n" "$ref_label" "$ref_out"
+        printf "  %-12s  : %s\n" "seq" "$ref_out"
     } | tee -a "$LOG"
     local seq_out=$ref_out
 
-    for cfg in "1 32 1" "2 64 1" "4 128 1" "1 1 32" "2 2 32" "4 4 32"; do
+    # Small inputs: the reference also passes the O(N^2) naive check.
+    if [ "$NR" -le 500 ] && [ "$NS" -le 500 ]; then
+        local nv
+        nv=$(echo "$ref_raw" | awk -F= '/^naive_verify=/{print $2}')
+        printf "  naive(seq)   : %s\n" "$nv" | tee -a "$LOG"
+        if [ "$nv" = "PASS" ]; then ok=$((ok+1)); else fail=$((fail+1)); fi
+    fi
+
+    # cfg = "nodes ranks threads". Pure MPI (T=1): small rank counts on one
+    # node (R=1,2,4,8) plus R=32,64,128 across nodes; hybrid (T=32): one rank
+    # per node. R=1 exercises the no-communication path, R=2 the minimal swap.
+    for cfg in "1 1 1" "1 2 1" "1 4 1" "1 8 1" \
+               "1 32 1" "2 64 1" "4 128 1" \
+               "1 1 32" "2 2 32" "4 4 32"; do
         read -r N R T <<<"$cfg"
         if [ "$P" -lt "$R" ] || [ $((P % R)) -ne 0 ]; then continue; fi
         local BIN tag
@@ -84,6 +94,8 @@ run_case() {
     done
 }
 
+run_case small-uniform  200      400      42 100      16  0   0
+run_case small-skewed   200      400      42 100      16  0.9 4
 run_case medium-uniform 1000000 2000000  42 500000   128 0   0
 run_case medium-skewed  1000000 2000000  42 500000   128 0.9 4
 run_case large-uniform  5000000 10000000 42 2500000  256 0   0

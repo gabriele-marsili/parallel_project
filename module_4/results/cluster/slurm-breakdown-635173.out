@@ -1,0 +1,22 @@
+breakdown nodes=4 NR=50000000 NS=100000000 REPS=5
+  mpi    uniform ranks=128 run=1
+  mpi    uniform ranks=128 run=2
+  mpi    uniform ranks=128 run=3
+  mpi    uniform ranks=128 run=4
+  mpi    uniform ranks=128 run=5
+  hybrid uniform ranks=4 threads=32 run=1
+  hybrid uniform ranks=4 threads=32 run=2
+  hybrid uniform ranks=4 threads=32 run=3
+  hybrid uniform ranks=4 threads=32 run=4
+  hybrid uniform ranks=4 threads=32 run=5
+  mpi    skewed  ranks=128 run=1
+  mpi    skewed  ranks=128 run=2
+  mpi    skewed  ranks=128 run=3
+  mpi    skewed  ranks=128 run=4
+  mpi    skewed  ranks=128 run=5
+  hybrid skewed  ranks=4 threads=32 run=1
+  hybrid skewed  ranks=4 threads=32 run=2
+  hybrid skewed  ranks=4 threads=32 run=3
+  hybrid skewed  ranks=4 threads=32 run=4
+  hybrid skewed  ranks=4 threads=32 run=5
+wrote results/breakdown.csv (21 lines)

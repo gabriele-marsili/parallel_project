@@ -1,4 +1,4 @@
-"""Skewed vs uniform — show how skew interacts with the distributed pipeline."""
+"""Skewed vs uniform, show how skew interacts with the distributed pipeline."""
 
 import os
 
@@ -25,7 +25,7 @@ def plot() -> None:
     nodes_all = sorted(df["nodes"].unique())
 
     for ax, impl_key, title in zip(axes, ("mpi", "hybrid"),
-                                   ("MPI puro", "Hybrid")):
+                                   ("Pure MPI", "Hybrid")):
         for wl, color, marker in [("uniform", "C0", "o"),
                                   ("skewed",  "C3", "s")]:
             sub = med[(med["impl"] == impl_key) & (med["workload"] == wl)] \
@@ -37,12 +37,12 @@ def plot() -> None:
         ax.set_xscale("log", base=2)
         ax.set_xticks(nodes_all)
         ax.set_xticklabels([str(n) for n in nodes_all])
-        ax.set_xlabel("Nodi", fontsize=10)
+        ax.set_xlabel("Nodes", fontsize=10)
         ax.set_title(title, fontsize=10)
         ax.tick_params(labelsize=9)
         ax.legend(fontsize=9)
 
-    axes[0].set_ylabel("Tempo (s)", fontsize=10)
+    axes[0].set_ylabel("Time (s)", fontsize=10)
     fig.tight_layout()
     os.makedirs(REPORT_DIR, exist_ok=True)
     fig.savefig(os.path.join(REPORT_DIR, "fig_skew.pdf"), bbox_inches="tight")

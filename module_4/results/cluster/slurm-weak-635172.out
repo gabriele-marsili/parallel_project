@@ -1,0 +1,42 @@
+weak NR_per_rank=2000000 NS_per_rank=4000000 P=256 REPS=5 nodes=1 2 4 8
+  mpi    nodes=1 ranks=32 NR=64000000 run=1
+  mpi    nodes=1 ranks=32 NR=64000000 run=2
+  mpi    nodes=1 ranks=32 NR=64000000 run=3
+  mpi    nodes=1 ranks=32 NR=64000000 run=4
+  mpi    nodes=1 ranks=32 NR=64000000 run=5
+  hybrid nodes=1 ranks=1 threads=32 NR=2000000 run=1
+  hybrid nodes=1 ranks=1 threads=32 NR=2000000 run=2
+  hybrid nodes=1 ranks=1 threads=32 NR=2000000 run=3
+  hybrid nodes=1 ranks=1 threads=32 NR=2000000 run=4
+  hybrid nodes=1 ranks=1 threads=32 NR=2000000 run=5
+  mpi    nodes=2 ranks=64 NR=128000000 run=1
+  mpi    nodes=2 ranks=64 NR=128000000 run=2
+  mpi    nodes=2 ranks=64 NR=128000000 run=3
+  mpi    nodes=2 ranks=64 NR=128000000 run=4
+  mpi    nodes=2 ranks=64 NR=128000000 run=5
+  hybrid nodes=2 ranks=2 threads=32 NR=4000000 run=1
+  hybrid nodes=2 ranks=2 threads=32 NR=4000000 run=2
+  hybrid nodes=2 ranks=2 threads=32 NR=4000000 run=3
+  hybrid nodes=2 ranks=2 threads=32 NR=4000000 run=4
+  hybrid nodes=2 ranks=2 threads=32 NR=4000000 run=5
+  mpi    nodes=4 ranks=128 NR=256000000 run=1
+  mpi    nodes=4 ranks=128 NR=256000000 run=2
+  mpi    nodes=4 ranks=128 NR=256000000 run=3
+  mpi    nodes=4 ranks=128 NR=256000000 run=4
+  mpi    nodes=4 ranks=128 NR=256000000 run=5
+  hybrid nodes=4 ranks=4 threads=32 NR=8000000 run=1
+  hybrid nodes=4 ranks=4 threads=32 NR=8000000 run=2
+  hybrid nodes=4 ranks=4 threads=32 NR=8000000 run=3
+  hybrid nodes=4 ranks=4 threads=32 NR=8000000 run=4
+  hybrid nodes=4 ranks=4 threads=32 NR=8000000 run=5
+  mpi    nodes=8 ranks=256 NR=512000000 run=1
+  mpi    nodes=8 ranks=256 NR=512000000 run=2
+  mpi    nodes=8 ranks=256 NR=512000000 run=3
+  mpi    nodes=8 ranks=256 NR=512000000 run=4
+  mpi    nodes=8 ranks=256 NR=512000000 run=5
+  hybrid nodes=8 ranks=8 threads=32 NR=16000000 run=1
+  hybrid nodes=8 ranks=8 threads=32 NR=16000000 run=2
+  hybrid nodes=8 ranks=8 threads=32 NR=16000000 run=3
+  hybrid nodes=8 ranks=8 threads=32 NR=16000000 run=4
+  hybrid nodes=8 ranks=8 threads=32 NR=16000000 run=5
+wrote results/weak_scaling.csv (41 lines)

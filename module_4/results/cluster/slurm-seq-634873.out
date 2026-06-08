@@ -1,0 +1,12 @@
+  seq uniform run=1 t=4.479383  (scatter_R=844.346 scatter_S=1729.405 join=1649.102 ms)
+  seq uniform run=2 t=4.478412  (scatter_R=848.658 scatter_S=1720.260 join=1652.917 ms)
+  seq uniform run=3 t=4.484248  (scatter_R=849.272 scatter_S=1727.190 join=1651.457 ms)
+  seq uniform run=4 t=4.479349  (scatter_R=852.342 scatter_S=1720.986 join=1649.581 ms)
+  seq uniform run=5 t=4.469912  (scatter_R=843.028 scatter_S=1721.814 join=1648.876 ms)
+  seq skewed run=1 t=2.297720  (scatter_R=256.795 scatter_S=508.930 join=1273.289 ms)
+  seq skewed run=2 t=2.300300  (scatter_R=256.440 scatter_S=509.239 join=1275.551 ms)
+  seq skewed run=3 t=2.297129  (scatter_R=255.752 scatter_S=509.865 join=1272.730 ms)
+  seq skewed run=4 t=2.298551  (scatter_R=255.883 scatter_S=510.122 join=1273.827 ms)
+  seq skewed run=5 t=2.299132  (scatter_R=256.081 scatter_S=509.630 join=1274.147 ms)
+wrote results/seq_baseline.csv
+wrote results/seq_breakdown.csv

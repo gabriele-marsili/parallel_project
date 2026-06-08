@@ -16,12 +16,12 @@ cd "$SLURM_SUBMIT_DIR"
 
 MPI=./hashjoin_mpi
 HYB=./hashjoin_mpi_omp
-[ -x "$MPI" ] || { echo "$MPI missing — run make first" >&2; exit 1; }
-[ -x "$HYB" ] || { echo "$HYB missing — run make first" >&2; exit 1; }
+[ -x "$MPI" ] || { echo "$MPI missing, run make first" >&2; exit 1; }
+[ -x "$HYB" ] || { echo "$HYB missing, run make first" >&2; exit 1; }
 
 mkdir -p results
 
-# Per-rank workload (uniform only — the skewed generator keeps the hot keys
+# Per-rank workload (uniform only, the skewed generator keeps the hot keys
 # global so a per-rank scaling would distort the comparison).
 NR_PER_RANK=${NR_PER_RANK:-2000000}
 NS_PER_RANK=${NS_PER_RANK:-4000000}

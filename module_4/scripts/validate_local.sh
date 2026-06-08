@@ -9,15 +9,15 @@ cd "$(dirname "$0")/.."
 
 MPI=./hashjoin_mpi
 HYB=./hashjoin_mpi_omp
-SEQ=../module_3/hashjoin_seq
+SEQ=./hashjoin_seq
 
 # --oversubscribe lets Open MPI run more ranks than physical cores on the
 # laptop; on the cluster SLURM controls the rank count and the flag is unused.
 MPIRUN_OPTS="--oversubscribe"
 
-[ -x "$MPI" ] || { echo "$MPI missing — run 'make' first" >&2; exit 1; }
-[ -x "$HYB" ] || { echo "$HYB missing — run 'make' first" >&2; exit 1; }
-[ -x "$SEQ" ] || { (cd ../module_3 && make hashjoin_seq) >/dev/null; }
+[ -x "$MPI" ] || { echo "$MPI missing, run 'make' first" >&2; exit 1; }
+[ -x "$HYB" ] || { echo "$HYB missing, run 'make' first" >&2; exit 1; }
+[ -x "$SEQ" ] || make hashjoin_seq >/dev/null
 
 mkdir -p results
 LOG=results/validation_local.log

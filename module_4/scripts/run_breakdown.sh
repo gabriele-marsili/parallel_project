@@ -9,7 +9,7 @@
 #SBATCH --exclusive
 
 # Focused breakdown at a single (representative) node count, varying only
-# rank/thread mix and workload. Same parser as the strong-scaling sweep — the
+# rank/thread mix and workload. Same parser as the strong-scaling sweep, the
 # csv has one row per measured cell, with the rank-max time of each phase.
 
 set -euo pipefail
