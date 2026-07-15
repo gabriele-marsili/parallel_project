@@ -1,0 +1,6 @@
+kernel,hash_bits,impl,throughput_Mkeys_s
+scalar32,32,scalar,910.4
+avx2_32,32,simd,1199.5
+autovec32,32,simd_compiler,1324.6
+scalar64,64,scalar,1099.8
+avx2_64,64,simd,1074.8

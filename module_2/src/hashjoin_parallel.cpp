@@ -1,4 +1,4 @@
-//Parallel implementation with C++ threads
+// Parallel implementation with C++ threads
 
 /* Parallelization strategy:
 
@@ -52,12 +52,16 @@ in the extended Amdahl's model with linear overhead term).
 // Avoids oversubscription and prevents launching threads for tiny workloads.
 // min_items_per_thread: below this, a single thread is more efficient than
 // paying the thread coordination overhead.
-static int compute_thread_count(std::size_t workload_items,
-                                int max_threads,
-                                std::size_t min_items_per_thread = 8192) {
-    if (max_threads <= 1) return 1;
+static int compute_thread_count(
+    std::size_t workload_items,
+    int max_threads,
+    std::size_t min_items_per_thread = 8192 //2^13, values from ~1000 to ~30000 should repay the cost of thread creation 
+){
+    if (max_threads <= 1)
+        return 1;
     int useful = static_cast<int>(workload_items / min_items_per_thread);
-    if (useful < 1) useful = 1;
+    if (useful < 1)
+        useful = 1;
     return std::min(useful, max_threads);
 }
 
@@ -67,18 +71,20 @@ This avoids the cost of spawning/joining threads between phases.
 
 (extended) Amdahl with overhead:
 S(p) ≤ 1 / [f + O(p) + (1-f)/p]
-where O(p) includes thread creation overhead. 
+where O(p) includes thread creation overhead.
 reusing threads => reduce O(p) from ~6 spawn/join cycles to 1.
 
 out_R and out_S must be pre-allocated to size NR and NS respectively before the timed region in main()
 */
-static JoinResult partitioned_hash_join_parallel(const std::vector<Record>& R,
-                                                  const std::vector<Record>& S,
-                                                  std::uint32_t P, 
-                                                  int nthreads,
-                                                  PhaseTiming& timing,
-                                                  std::vector<Record>& out_R,
-                                                  std::vector<Record>& out_S) {
+static JoinResult partitioned_hash_join_parallel(
+    const std::vector<Record> &R,
+    const std::vector<Record> &S,
+    std::uint32_t P,
+    int nthreads,
+    PhaseTiming &timing,
+    std::vector<Record> &out_R,
+    std::vector<Record> &out_S
+){
     using Clock = std::chrono::steady_clock;
     const unsigned shift = compute_shift(P);
     const std::size_t NR = R.size();
@@ -101,8 +107,11 @@ static JoinResult partitioned_hash_join_parallel(const std::vector<Record>& R,
     std::vector<std::vector<std::size_t>> offsets_R(nt, std::vector<std::size_t>(P));
     std::vector<std::vector<std::size_t>> offsets_S(nt, std::vector<std::size_t>(P));
 
-    // Join results — padded to avoid false sharing 
-    struct alignas(64) PaddedResult { JoinResult result{}; };
+    // Join results — padded to avoid false sharing
+    struct alignas(64) PaddedResult
+    {
+        JoinResult result{};
+    };
     std::vector<PaddedResult> thr_results(nt);
 
     // Phase timing (written by thread 0 only)
@@ -112,56 +121,67 @@ static JoinResult partitioned_hash_join_parallel(const std::vector<Record>& R,
     // The completion function runs on a single thread between phases,
     // used for the sequential prefix-sum and offset computation.
     int phase = 0;
-    auto on_barrier = [&]() noexcept {
+    auto on_barrier = [&]() noexcept
+    {
         phase_t1 = Clock::now();
         double elapsed = std::chrono::duration<double>(phase_t1 - phase_t0).count();
 
-        switch (phase) {
-            case 0: { // After histogram R -> compute prefix sum + scatter offsets for R
-                timing.histogram_R = elapsed;
-                // Merge local histograms -> global
+        switch (phase)
+        {
+        case 0:
+        { // After histogram R -> compute prefix sum + scatter offsets for R
+            timing.histogram_R = elapsed;
+            // Merge local histograms -> global ( O(k*P) )
+            for (int t = 0; t < nt; ++t)
+                for (std::uint32_t pid = 0; pid < P; ++pid)
+                    global_hist_R[pid] += local_hists_R[t][pid];
+            // Prefix sum (in-place — no allocation inside noexcept lambda)
+            exclusive_prefix_sum_inplace(global_hist_R, global_begin_R);
+            // Per-thread offsets for lock-free scatter ( O(k*p) )
+            for (std::uint32_t pid = 0; pid < P; ++pid)
+            {
+                std::size_t off = global_begin_R[pid];
                 for (int t = 0; t < nt; ++t)
-                    for (std::uint32_t pid = 0; pid < P; ++pid)
-                        global_hist_R[pid] += local_hists_R[t][pid];
-                // Prefix sum (in-place — no allocation inside noexcept lambda)
-                exclusive_prefix_sum_inplace(global_hist_R, global_begin_R);
-                // Per-thread offsets for lock-free scatter
-                for (std::uint32_t pid = 0; pid < P; ++pid) {
-                    std::size_t off = global_begin_R[pid];
-                    for (int t = 0; t < nt; ++t) {
-                        offsets_R[t][pid] = off;
-                        off += local_hists_R[t][pid];
-                    }
+                {
+                    offsets_R[t][pid] = off;
+                    off += local_hists_R[t][pid];
                 }
-                break;
             }
-            case 1: { // After scatter R -> record time
-                timing.scatter_R = elapsed;
-                break;
-            }
-            case 2: { // After histogram S -> compute prefix sum + scatter offsets for S
-                timing.histogram_S = elapsed;
+            break;
+        }
+        case 1:
+        { // After scatter R -> record time
+            timing.scatter_R = elapsed;
+            break;
+        }
+        case 2:
+        { // After histogram S -> compute prefix sum + scatter offsets for S
+            timing.histogram_S = elapsed;
+            for (int t = 0; t < nt; ++t)
+                for (std::uint32_t pid = 0; pid < P; ++pid)
+                    global_hist_S[pid] += local_hists_S[t][pid];
+            exclusive_prefix_sum_inplace(global_hist_S, global_begin_S);
+            for (std::uint32_t pid = 0; pid < P; ++pid)
+            {
+                std::size_t off = global_begin_S[pid];
                 for (int t = 0; t < nt; ++t)
-                    for (std::uint32_t pid = 0; pid < P; ++pid)
-                        global_hist_S[pid] += local_hists_S[t][pid];
-                exclusive_prefix_sum_inplace(global_hist_S, global_begin_S);
-                for (std::uint32_t pid = 0; pid < P; ++pid) {
-                    std::size_t off = global_begin_S[pid];
-                    for (int t = 0; t < nt; ++t) {
-                        offsets_S[t][pid] = off;
-                        off += local_hists_S[t][pid];
-                    }
+                {
+                    offsets_S[t][pid] = off;
+                    off += local_hists_S[t][pid];
                 }
-                break;
             }
-            case 3: { // After scatter S -> record time
-                timing.scatter_S = elapsed;
-                break;
-            }
-            case 4: { // After join -> record time
-                timing.join_local = elapsed;
-                break;
-            }
+            break;
+        }
+        case 3:
+        { // After scatter S -> record time
+            timing.scatter_S = elapsed;
+            break;
+        }
+        case 4:
+        { // After join -> record time
+            timing.join_local = elapsed;
+            break;
+        }
         }
         ++phase;
         phase_t0 = Clock::now();
@@ -174,8 +194,10 @@ static JoinResult partitioned_hash_join_parallel(const std::vector<Record>& R,
 
     std::vector<std::thread> threads;
     threads.reserve(nt);
-    for (int t = 0; t < nt; ++t) {
-        threads.emplace_back([&, t]() {
+    for (int t = 0; t < nt; ++t)
+    {
+        threads.emplace_back([&, t]()
+                             {
             // Block ranges for this thread
             const std::size_t r_start = (NR * t) / nt;
             const std::size_t r_end   = (NR * (t + 1)) / nt;
@@ -183,6 +205,11 @@ static JoinResult partitioned_hash_join_parallel(const std::vector<Record>& R,
             const std::size_t s_end   = (NS * (t + 1)) / nt;
 
             // ── Phase 0: Histogram R ──
+            // Memory-bound: legge 8 B/record da DRAM (array >> L3), l'increment su lh (P<=1024
+            // -> <=4 KB) sta in L1. Intensità I ~ 0.125 op/byte (1 op utile / 8 B) -> regime
+            // memory-bound: a 16 core l'histogram satura la banda del nodo (~40 GB/s = tetto
+            // read) e smette di scalare. Derivazione completa nel seq (compute_histogram) e in
+            // extra_experiments/05_histogram_roofline.
             {
                 auto& lh = local_hists_R[t];
                 for (std::size_t i = r_start; i < r_end; ++i)
@@ -249,46 +276,52 @@ static JoinResult partitioned_hash_join_parallel(const std::vector<Record>& R,
                 }
                 thr_results[t].result = local;
             }
-            sync.arrive_and_wait();
-        });
+            sync.arrive_and_wait(); });
     }
-    for (auto& th : threads) th.join();
+    for (auto &th : threads)
+        th.join();
 
     // ── Reduce results ──
     JoinResult total{};
-    for (int t = 0; t < nt; ++t) {
+    for (int t = 0; t < nt; ++t)
+    {
         total.join_count += thr_results[t].result.join_count;
-        total.checksum1  += thr_results[t].result.checksum1;
-        total.checksum2  += thr_results[t].result.checksum2;
+        total.checksum1 += thr_results[t].result.checksum1;
+        total.checksum2 += thr_results[t].result.checksum2;
     }
 
-    timing.total = timing.histogram_R + timing.scatter_R
-                 + timing.histogram_S + timing.scatter_S
-                 + timing.join_local;
+    timing.total = timing.histogram_R + timing.scatter_R + timing.histogram_S + timing.scatter_S + timing.join_local;
     return total;
 }
 
 // ============================================================
 // Main
 // ============================================================
-int main(int argc, char** argv) {
+int main(int argc, char **argv)
+{
     std::uint64_t nr = 0, ns = 0, seed = 0, max_key = 0, p = 0, t = 0;
 
     if (!read_arg_u64(argc, argv, "-nr", nr) ||
         !read_arg_u64(argc, argv, "-ns", ns) ||
         !read_arg_u64(argc, argv, "-seed", seed) ||
         !read_arg_u64(argc, argv, "-max-key", max_key) ||
-        !read_arg_u64(argc, argv, "-p", p)) {
+        !read_arg_u64(argc, argv, "-p", p))
+    {
         usage_par(argv[0]);
         return 1;
     }
 
     if (!read_arg_u64(argc, argv, "-t", t) || t == 0)
         t = std::thread::hardware_concurrency();
-    if (t == 0) t = 4;
+    if (t == 0)
+        t = 4;
 
     const std::uint32_t P = static_cast<std::uint32_t>(p);
-    if (!is_power_of_two(P)) { std::cerr << "Error: P must be a power of two.\n"; return 1; }
+    if (!is_power_of_two(P))
+    {
+        std::cerr << "Error: P must be a power of two.\n";
+        return 1;
+    }
 
     const std::size_t NR = static_cast<std::size_t>(nr);
     const std::size_t NS = static_cast<std::size_t>(ns);
@@ -311,18 +344,19 @@ int main(int argc, char** argv) {
               << " seed=" << seed << " max_key=" << max_key
               << " threads=" << nthreads << "\n";
     std::cout << "join_count=" << result.join_count << "\n";
-    std::cout << "checksum1="  << result.checksum1  << "\n";
-    std::cout << "checksum2="  << result.checksum2  << "\n";
+    std::cout << "checksum1=" << result.checksum1 << "\n";
+    std::cout << "checksum2=" << result.checksum2 << "\n";
     std::cout << std::fixed << std::setprecision(6);
     std::cout << "time_sec=" << sec << "\n";
 
     timing.print();
 
-    if (NR <= 500 && NS <= 500) {
+    if (NR <= 500 && NS <= 500)
+    {
         const JoinResult naive = naive_join_verifier(R, S);
         bool ok = (naive.join_count == result.join_count &&
-                   naive.checksum1  == result.checksum1 &&
-                   naive.checksum2  == result.checksum2);
+                   naive.checksum1 == result.checksum1 &&
+                   naive.checksum2 == result.checksum2);
         std::cout << "naive_verify=" << (ok ? "PASS" : "FAIL") << "\n";
     }
 

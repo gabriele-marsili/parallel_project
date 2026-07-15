@@ -1,0 +1,3 @@
+[1/2] ping-pong inter-nodo (rank 0 e 1 su nodi diversi)
+[2/2] ping-pong intra-nodo (rank 0 e 1 sullo stesso nodo)
+ALL_DONE_MARKER

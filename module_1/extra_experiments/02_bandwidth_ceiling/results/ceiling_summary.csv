@@ -1,0 +1,9 @@
+label,category,gb_s,note
+STREAM Copy,ceiling,26.63,"double 16B/iter"
+STREAM Triad,ceiling,19.30,"double 24B/iter (rif. STREAM)"
+STREAM Scale,ceiling,16.34,"double 16B/iter (~ il 16.4 del report)"
+copy matched (temporal),matched,19.15,"read u64 + write u32, 12B utili"
+copy matched (non-temporal),matched,19.45,"store NT, 12B"
+autovec,kernel,15.93,"1327.4 Mkeys/s x12B"
+avx2,kernel,14.38,"1198.7 Mkeys/s x12B"
+baseline,kernel,10.91,"908.8 Mkeys/s x12B"

@@ -1,0 +1,33 @@
+# Tetto di banda single-core su node09 (AMD EPYC 7301, 2 socket, L3 128 MiB)
+# Misurato via srun --partition=gpu-excl --nodelist=node09 --cpus-per-task=1
+# Data run: 2026-07-06
+
+=== STREAM single-core (McCalpin, array di double, convenzione byte utili) ===
+threads=1  array=80M double (0.64 GB/array)
+  Copy :  26.63 GB/s     (a[i]=b[i], 16 B/iter)
+  Scale:  16.34 GB/s     (a[i]=q*b[i], 16 B/iter)   <-- ~ il "16.4" del report
+  Add  :  19.30 GB/s     (a[i]=b[i]+c[i], 24 B/iter)
+  Triad:  19.30 GB/s     (a[i]=b[i]+q*c[i], 24 B/iter)  <-- banda di riferimento STREAM
+
+=== mem_ceiling: pattern MATCHED al kernel (read uint64 + write uint32) ===
+read64       17.49 GB/s (8B/elem)                      # sola lettura (indicativo, riduzione)
+copy_tempo   19.15 GB/s (12B utili) | 25.54 GB/s (16B reali con RFO)   # store temporali
+copy_nt      19.45 GB/s (12B)                          # store non-temporali, niente RFO
+
+# In elementi/s: STREAM Copy ~1.66 Gelem/s, copy matched ~1.60 Gelem/s (stesso ordine).
+
+=== banda RAGGIUNTA dai kernel del modulo (N=100M, P=256, 11 rip, mediana) ===
+plain_baseline   908.8 Mkeys/s  -> 10.91 GB/s (12B)
+plain_autovec   1327.4 Mkeys/s  -> 15.93 GB/s (12B)    # report: 1310 -> 15.7
+avx2            1198.7 Mkeys/s  -> 14.38 GB/s (12B)
+
+=== Lettura ===
+# Tetto giusto per QUESTO kernel = copy matched single-core = 19.15 GB/s (12B utili).
+# autovec 15.93 / 19.15 = 83%  (NON 96%).
+# Il "96%" del report deriva dal dividere per 16.4, un tetto non riprodotto da alcun
+#   artefatto nel repo e che coincide con lo STREAM Scale (16.34), non col Copy.
+# Il kernel resta memory-bound (tutti i kernel << picco compute), ma c'e' ~17% di
+#   margine verso il tetto di copia pura: e' il costo del compute hash parzialmente
+#   esposto, perche' a SINGOLO core il controller DRAM non e' saturo.
+# Store non-temporali: guadagno single-core trascurabile (19.45 vs 19.15) -> l'RFO
+#   non e' il collo a 1 core; conterebbe a socket pieno.

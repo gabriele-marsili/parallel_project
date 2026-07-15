@@ -1,0 +1,16 @@
+=== 02_task_overhead su node03 ===
+[build] omp_ablation + omp_ablation_nonowait (-march=native su node03)
+[1/2] sweep tchunks (task, T=16 uniforme) + riferimento loop
+   tchunks=16 done
+   tchunks=32 done
+   tchunks=64 done
+   tchunks=128 done
+   tchunks=256 done
+   tchunks=512 done
+   tchunks=1024 done
+[2/2] nowait vs no-nowait (task) su T x workload
+   T=8 done
+   T=16 done
+   T=32 done
+[ok] node03: results/task_chunks.csv  results/nowait.csv
+ALL_DONE_MARKER

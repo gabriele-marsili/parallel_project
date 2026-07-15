@@ -1,0 +1,7 @@
+config,flags,median_ms,throughput_Mkeys_s
+"autovec (consegnato)","-O3 -march=native -mavx2 -mfma -ftree-vectorize -DAUTOVEC_ENABLED",76.191,1312.5
+"-- tolgo vettorizzazione","-O3 -march=native -mavx2 -mfma -fno-tree-vectorize",110.740,903.0
+"-- tolgo march=native","-O3 -mavx2 -mfma -ftree-vectorize -DAUTOVEC_ENABLED",89.748,1114.2
+"-- O3 -> O2","-O2 -march=native -mavx2 -mfma -ftree-vectorize -DAUTOVEC_ENABLED",75.742,1320.3
+"-- O3 -> O1","-O1 -march=native -mavx2 -mfma -ftree-vectorize -DAUTOVEC_ENABLED",75.909,1317.4
+"++ aggiungo funroll-loops","-O3 -march=native -mavx2 -mfma -ftree-vectorize -DAUTOVEC_ENABLED -funroll-loops",75.985,1316.0

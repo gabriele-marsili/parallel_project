@@ -1,0 +1,146 @@
+NODE=node09  DATE=Mon Jul  6 10:51:38 AM CEST 2026
+g++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0
+=== CPU: Sweep N (P=256) ===
+--- N=1000000 P=256 ---
+[plain_baseline]
+plain (no-vec)                  N=1000000       median=1.083      ms  stddev=0.054    ms  throughput=923.5 Mkeys/s
+  checksum=0x9855bc1addcd670a
+  P=256 shift=24 seed=42 key_space=0
+  Distribuzione: min=3761 max=4071 atteso=3906.2 max/atteso=1.0422
+[plain_autovec]
+plain (autovec)                 N=1000000       median=0.717      ms  stddev=0.030    ms  throughput=1394.1 Mkeys/s
+  checksum=0x9855bc1addcd670a
+  P=256 shift=24 seed=42 key_space=0
+  Distribuzione: min=3761 max=4071 atteso=3906.2 max/atteso=1.0422
+[avx2]
+Correttezza: OK (checksum=0x9855bc1addcd670a)
+scalar (riferimento)            N=1000000       median=1.080      ms  stddev=0.035    ms  throughput=926.0 Mkeys/s
+AVX2 (intrinsics)               N=1000000       median=0.777      ms  stddev=0.027    ms  throughput=1286.7 Mkeys/s
+  Speedup AVX2 vs scalar: 1.39x
+  P=256 shift=24 seed=42 key_space=0
+  Distribuzione: min=3761 max=4071 atteso=3906.2 max/atteso=1.0422
+--- N=10000000 P=256 ---
+[plain_baseline]
+plain (no-vec)                  N=10000000      median=10.961     ms  stddev=0.025    ms  throughput=912.3 Mkeys/s
+  checksum=0xebb2132ce72da317
+  P=256 shift=24 seed=42 key_space=0
+  Distribuzione: min=38593 max=39697 atteso=39062.5 max/atteso=1.0162
+[plain_autovec]
+plain (autovec)                 N=10000000      median=7.660      ms  stddev=0.014    ms  throughput=1305.5 Mkeys/s
+  checksum=0xebb2132ce72da317
+  P=256 shift=24 seed=42 key_space=0
+  Distribuzione: min=38593 max=39697 atteso=39062.5 max/atteso=1.0162
+[avx2]
+Correttezza: OK (checksum=0xebb2132ce72da317)
+scalar (riferimento)            N=10000000      median=11.005     ms  stddev=0.047    ms  throughput=908.7 Mkeys/s
+AVX2 (intrinsics)               N=10000000      median=8.463      ms  stddev=0.022    ms  throughput=1181.6 Mkeys/s
+  Speedup AVX2 vs scalar: 1.30x
+  P=256 shift=24 seed=42 key_space=0
+  Distribuzione: min=38593 max=39697 atteso=39062.5 max/atteso=1.0162
+--- N=50000000 P=256 ---
+[plain_baseline]
+plain (no-vec)                  N=50000000      median=55.043     ms  stddev=0.065    ms  throughput=908.4 Mkeys/s
+  checksum=0x4c77bcc8cd144dbf
+  P=256 shift=24 seed=42 key_space=0
+  Distribuzione: min=194226 max=196667 atteso=195312.5 max/atteso=1.0069
+[plain_autovec]
+plain (autovec)                 N=50000000      median=37.713     ms  stddev=0.051    ms  throughput=1325.8 Mkeys/s
+  checksum=0x4c77bcc8cd144dbf
+  P=256 shift=24 seed=42 key_space=0
+  Distribuzione: min=194226 max=196667 atteso=195312.5 max/atteso=1.0069
+[avx2]
+Correttezza: OK (checksum=0x4c77bcc8cd144dbf)
+scalar (riferimento)            N=50000000      median=55.060     ms  stddev=0.075    ms  throughput=908.1 Mkeys/s
+AVX2 (intrinsics)               N=50000000      median=41.288     ms  stddev=0.050    ms  throughput=1211.0 Mkeys/s
+  Speedup AVX2 vs scalar: 1.33x
+  P=256 shift=24 seed=42 key_space=0
+  Distribuzione: min=194226 max=196667 atteso=195312.5 max/atteso=1.0069
+--- N=100000000 P=256 ---
+[plain_baseline]
+plain (no-vec)                  N=100000000     median=109.757    ms  stddev=1.749    ms  throughput=911.1 Mkeys/s
+  checksum=0x842ff3b20ec24250
+  P=256 shift=24 seed=42 key_space=0
+  Distribuzione: min=388891 max=392603 atteso=390625.0 max/atteso=1.0051
+[plain_autovec]
+plain (autovec)                 N=100000000     median=75.178     ms  stddev=0.065    ms  throughput=1330.2 Mkeys/s
+  checksum=0x842ff3b20ec24250
+  P=256 shift=24 seed=42 key_space=0
+  Distribuzione: min=388891 max=392603 atteso=390625.0 max/atteso=1.0051
+[avx2]
+Correttezza: OK (checksum=0x842ff3b20ec24250)
+scalar (riferimento)            N=100000000     median=110.150    ms  stddev=3.590    ms  throughput=907.9 Mkeys/s
+AVX2 (intrinsics)               N=100000000     median=83.851     ms  stddev=3.064    ms  throughput=1192.6 Mkeys/s
+  Speedup AVX2 vs scalar: 1.31x
+  P=256 shift=24 seed=42 key_space=0
+  Distribuzione: min=388891 max=392603 atteso=390625.0 max/atteso=1.0051
+--- N=200000000 P=256 ---
+[plain_baseline]
+plain (no-vec)                  N=200000000     median=221.391    ms  stddev=4.720    ms  throughput=903.4 Mkeys/s
+  checksum=0xdbe3da0ebfd5e40a
+  P=256 shift=24 seed=42 key_space=0
+  Distribuzione: min=778405 max=784836 atteso=781250.0 max/atteso=1.0046
+[plain_autovec]
+plain (autovec)                 N=200000000     median=150.070    ms  stddev=4.624    ms  throughput=1332.7 Mkeys/s
+  checksum=0xdbe3da0ebfd5e40a
+  P=256 shift=24 seed=42 key_space=0
+  Distribuzione: min=778405 max=784836 atteso=781250.0 max/atteso=1.0046
+[avx2]
+Correttezza: OK (checksum=0xdbe3da0ebfd5e40a)
+scalar (riferimento)            N=200000000     median=224.923    ms  stddev=4.317    ms  throughput=889.2 Mkeys/s
+AVX2 (intrinsics)               N=200000000     median=166.794    ms  stddev=4.097    ms  throughput=1199.1 Mkeys/s
+  Speedup AVX2 vs scalar: 1.35x
+  P=256 shift=24 seed=42 key_space=0
+  Distribuzione: min=778405 max=784836 atteso=781250.0 max/atteso=1.0046
+=== CUDA: Sweep N (P=256) ===
+NVIDIA A30, 24576 MiB
+--- CUDA N=1000000 P=256 ---
+Correttezza: OK (checksum=0x9855bc1addcd670a)
+Timing CUDA (mediana su 11 ripetizioni):
+  H->D  : 1.106 ms
+  Kernel: 0.020 ms
+  D->H  : 0.609 ms
+  Totale: 1.735 ms
+  Throughput (solo kernel): 48828.1 Mkeys/s
+  Throughput (end-to-end):  576.5 Mkeys/s
+  P=256 shift=24 N=1000000
+--- CUDA N=10000000 P=256 ---
+Correttezza: OK (checksum=0xebb2132ce72da317)
+Timing CUDA (mediana su 11 ripetizioni):
+  H->D  : 10.751 ms
+  Kernel: 0.166 ms
+  D->H  : 5.933 ms
+  Totale: 16.849 ms
+  Throughput (solo kernel): 60421.5 Mkeys/s
+  Throughput (end-to-end):  593.5 Mkeys/s
+  P=256 shift=24 N=10000000
+--- CUDA N=50000000 P=256 ---
+Correttezza: OK (checksum=0x4c77bcc8cd144dbf)
+Timing CUDA (mediana su 11 ripetizioni):
+  H->D  : 53.887 ms
+  Kernel: 0.758 ms
+  D->H  : 30.822 ms
+  Totale: 85.466 ms
+  Throughput (solo kernel): 65997.9 Mkeys/s
+  Throughput (end-to-end):  585.0 Mkeys/s
+  P=256 shift=24 N=50000000
+--- CUDA N=100000000 P=256 ---
+Correttezza: OK (checksum=0x842ff3b20ec24250)
+Timing CUDA (mediana su 11 ripetizioni):
+  H->D  : 108.389 ms
+  Kernel: 1.500 ms
+  D->H  : 64.278 ms
+  Totale: 174.168 ms
+  Throughput (solo kernel): 66646.8 Mkeys/s
+  Throughput (end-to-end):  574.2 Mkeys/s
+  P=256 shift=24 N=100000000
+--- CUDA N=200000000 P=256 ---
+Correttezza: OK (checksum=0xdbe3da0ebfd5e40a)
+Timing CUDA (mediana su 11 ripetizioni):
+  H->D  : 236.388 ms
+  Kernel: 2.989 ms
+  D->H  : 119.537 ms
+  Totale: 358.916 ms
+  Throughput (solo kernel): 66922.2 Mkeys/s
+  Throughput (end-to-end):  557.2 Mkeys/s
+  P=256 shift=24 N=200000000
+=== DONE ===

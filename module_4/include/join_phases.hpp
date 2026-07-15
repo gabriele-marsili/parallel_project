@@ -70,7 +70,7 @@ struct FlatCountMap {
         std::uint32_t h = slot_of(key);
         while (slots[h].key != ~0ULL && slots[h].key != key)
             h = (h + 1) & mask;
-        if (slots[h].key == ~0ULL) slots[h].key = key;
+        if (slots[h].key == ~0ULL) slots[h].key = key; //assign
         ++slots[h].cnt;
     }
 

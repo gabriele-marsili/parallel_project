@@ -1,0 +1,13 @@
+=== node node02 Wed Jul  8 12:05:47 PM CEST 2026 ===
+Model name:                           Intel(R) Xeon(R) CPU E5-2640 v2 @ 2.00GHz
+Thread(s) per core:                   2
+Core(s) per socket:                   8
+Socket(s):                            2
+CPU max MHz:                          2500.0000
+CPU min MHz:                          1200.0000
+L1d cache:                            512 KiB (16 instances)
+L2 cache:                             4 MiB (16 instances)
+L3 cache:                             40 MiB (2 instances)
+NUMA node(s):                         2
+NUMA node0 CPU(s):                    0-7,16-23
+NUMA node1 CPU(s):                    8-15,24-31

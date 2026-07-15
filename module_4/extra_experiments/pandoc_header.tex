@@ -1,0 +1,11 @@
+% Forza ogni figura a stare ESATTAMENTE dove è scritta nel testo (niente float).
+\usepackage{float}
+\let\origfigure\figure
+\let\endorigfigure\endfigure
+\renewenvironment{figure}[1][2]{%
+  \expandafter\origfigure\expandafter[H]%
+}{%
+  \endorigfigure
+}
+% Immagini larghe al massimo quanto la riga, mantenendo le proporzioni.
+\setkeys{Gin}{width=0.95\linewidth,keepaspectratio}

@@ -1,0 +1,15 @@
+=== 01_schedule_sweep su node02 ===
+[build] omp_ablation (-march=native su node02)
+[1/2] sweep schedule x T x workload (P=128)
+   T=4 done
+   T=8 done
+   T=16 done
+   T=32 done
+[2/2] granularità: P in {128,512,2048,4096,8192}, static vs dynamic1, T=16 uniforme
+   P=128 done
+   P=512 done
+   P=2048 done
+   P=4096 done
+   P=8192 done
+[ok] node02: results/schedule_sweep.csv  results/schedule_granularity.csv
+ALL_DONE_MARKER

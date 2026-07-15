@@ -1,0 +1,19 @@
+[1/2] hybrid, P sweep
+   P=128 uniform
+   P=128 skew
+   P=256 uniform
+   P=256 skew
+   P=512 uniform
+   P=512 skew
+   P=1024 uniform
+   P=1024 skew
+[2/2] pure MPI, P sweep
+   P=128 uniform
+   P=128 skew
+   P=256 uniform
+   P=256 skew
+   P=512 uniform
+   P=512 skew
+   P=1024 uniform
+   P=1024 skew
+ALL_DONE_MARKER

@@ -1,0 +1,13 @@
+=== 06_seq_opts su node07 ===
+[build] seq_opts + omp_ablation (-march=native su node07)
+[1/2] seq con pf {0/0, 12/0, 0/8, 12/8}, uniforme
+   pf=0/0 done
+   pf=12/0 done
+   pf=0/8 done
+   pf=12/8 done
+[2/2] omp loop T {1,2,4}, uniforme
+   T=1 done
+   T=2 done
+   T=4 done
+[ok] node07: results/seq_variants.csv  results/omp_lowT.csv
+ALL_DONE_MARKER

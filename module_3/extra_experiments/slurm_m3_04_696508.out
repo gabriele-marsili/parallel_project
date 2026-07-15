@@ -1,0 +1,14 @@
+=== 04_prefetch su node05 ===
+[build] omp_ablation (-march=native su node05)
+[1/3] ablation 2x2 x T {1,8,16}, uniforme
+   T=1 done
+   T=8 done
+   T=16 done
+[2/3] sweep pf-scatter {0,2,4,8,12,16,24,32,48}, T {1,16}, uniforme
+   T=1 done
+   T=16 done
+[3/3] sweep pf-probe {0,2,4,8,12,16,24,32,48}, T {1,16}, uniforme
+   T=1 done
+   T=16 done
+[ok] node05: results/prefetch_ablation.csv  results/pf_scatter_sweep.csv  results/pf_probe_sweep.csv
+ALL_DONE_MARKER

@@ -1,0 +1,7 @@
+Correttezza: avx2_32==scalar32 OK | avx2_64==scalar64 OK
+scalar32    median= 109.844 ms  throughput=   910.4 Mkeys/s  BW=10.92 GB/s
+avx2_32     median=  83.366 ms  throughput=  1199.5 Mkeys/s  BW=14.39 GB/s
+scalar64    median=  90.929 ms  throughput=  1099.8 Mkeys/s  BW=13.20 GB/s
+avx2_64     median=  93.043 ms  throughput=  1074.8 Mkeys/s  BW=12.90 GB/s
+speedup avx2_32/scalar32 = 1.32x | avx2_64/scalar64 = 0.98x
+CSV,100000000,256,910.4,1199.5,1099.8,1074.8

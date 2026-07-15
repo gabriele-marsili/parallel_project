@@ -1,0 +1,10 @@
+label,flags,median_ms,throughput_Mkeys_s
+"O0 (naive)","-O0",690.178,144.9
+"O1","-O1",110.439,905.5
+"O2","-O2",109.715,911.5
+"O3","-O3",82.228,1216.1
+"O3+march","-O3 -march=native",75.940,1316.8
+"O3+march+novec (baseline)","-O3 -march=native -mavx2 -mfma -fno-tree-vectorize",110.151,907.8
+"O3+march+vec (autovec)","-O3 -march=native -mavx2 -mfma -ftree-vectorize -DAUTOVEC_ENABLED",75.495,1324.6
+"O3+march+vec+unroll","-O3 -march=native -mavx2 -mfma -ftree-vectorize -funroll-loops -DAUTOVEC_ENABLED",74.676,1339.1
+"Ofast+march","-Ofast -march=native",75.082,1331.9

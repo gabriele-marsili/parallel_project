@@ -1,0 +1,13 @@
+[rpn=1 T=32 ranks=4 uniform]
+[rpn=1 T=32 ranks=4 skew]
+[rpn=2 T=16 ranks=8 uniform]
+[rpn=2 T=16 ranks=8 skew]
+[rpn=4 T=8 ranks=16 uniform]
+[rpn=4 T=8 ranks=16 skew]
+[rpn=8 T=4 ranks=32 uniform]
+[rpn=8 T=4 ranks=32 skew]
+[rpn=16 T=2 ranks=64 uniform]
+[rpn=16 T=2 ranks=64 skew]
+[rpn=32 T=1 ranks=128 uniform]
+[rpn=32 T=1 ranks=128 skew]
+ALL_DONE_MARKER

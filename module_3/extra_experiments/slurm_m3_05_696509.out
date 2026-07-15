@@ -1,0 +1,8 @@
+=== 05_numa_firsttouch su node06 ===
+[build] omp_ablation (-march=native su node06)
+[1/1] firsttouch {par,seq} x T {8,16,32} x workload {uniform,skew} (+interleave se numactl)
+   T=8 done
+   T=16 done
+   T=32 done
+[ok] node06: results/firsttouch.csv
+ALL_DONE_MARKER

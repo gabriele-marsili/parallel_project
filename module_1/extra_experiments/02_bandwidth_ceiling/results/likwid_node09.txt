@@ -1,0 +1,18 @@
+# likwid-bench single-core su node09 (AMD EPYC 7301), 1 thread, S0:1GB:1
+# Run: 2026-07-06. Serve a tracciare la provenienza del "16.4 GB/s" del report.
+
+kernel       GB/s     note
+load         15.84    sola lettura
+copy         13.67    copia scalare
+copy_avx     15.07    copia AVX2 256-bit   <-- il commento del report dice "copy AVX2 256-bit"
+stream_avx   18.00    stream AVX2
+triad_avx    19.31    triad AVX2           <-- coincide con STREAM Triad (19.30) e copy matched (19.15)
+
+# Lettura:
+# - I benchmark "generici" (load, copy, copy_avx) danno 13.7-15.8 GB/s; con STREAM Scale
+#   (16.34) formano la nuvola in cui cade il 16.4 del report. Quindi 16.4 non e' inventato:
+#   e' un valore plausibile di "banda single-core generica".
+# - I benchmark col pattern a 3 stream / matched (triad_avx 19.31, STREAM Triad 19.30,
+#   copia matched read-u64/write-u32 19.15) CONVERGONO su ~19 GB/s: e' il tetto giusto per
+#   il KERNEL (che legge 8B e scrive 4B), su cui autovec 15.9 = ~83%.
+# Morale: il 16.4 e' una banda generica ragionevole, ma il tetto matched del kernel e' ~19.

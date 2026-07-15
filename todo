@@ -1,0 +1,126 @@
+MODULO 1
+- motivare meglio la scelta della fn hash (come funziona, l'uso della costante golden ratio etc), fare tests :
+    - contro altre funzioni hash, almeno una naive come mod 
+    - imbalance sulle partizioni, comprendere se a liv di dati reali riesce davvero a creare partizioni bilanciate, come atteso 
+    - motivare perché si lavora a 32 bit anziché a 64 
+        - (!) magari riportare qualche esperimento 64 con più ixs. (3 vpmuludq instructions) vs 32 con meno per motivare 
+    - spiegare data layout e scelte in merito (array contigui + mem aligned a 32 byte)
+    - motivare flags utilizzati 
+        - sperimentare diverse config di flags e notarne le differenze (eventuale mini grid search, comprendente esperimento naive senza flags)
+    - 4.1 MKeys sta per?
+    - controllare se è stata fatta run che mette assieme avx + autovec o se è solo stato fatto confronto avx vs autovec
+    - fig 2 cosa è key space size?
+    - rifare run compreso cuda
+    - comprendere meglio come mai si arriva a 96% di single-core bandwidth (come è stato misurato?)
+
+MODULO 2
+- motivare perché usare barrier anziché altro 
+    - fare tests anche con thread pool con queue e comprendere mostrare confronto 
+    - specificare quali sono le dipendenze tra dati che motivano la scelta delle barrier 
+- valutare test su thread quantity k
+- valutare tests su altre tipologie diverse di distribuzione del workload per thread 
+    - statico vs dinamico + diverse metodologie per statico
+        - grafici vari che motivino la scelta fatta
+- comprendere meglio la motivazione del costo dominante per Histogram phase (memory bound dovuta a sequential scan, con I ≈ 0.125 Flop/byte -> motivare questo e comprendere da dove deriva, compresi commenti nel codice)
+- motivare e spiegare una ad una ogni singola cosa diversa rispetto alla baseline data di partenza a liv di modifiche fatte (es uso di fn hash; FlatCountMap)
+    - essenziale saper motivare nei minimi dettagli FlatCountMap come struttura, sia a liv di report che di codice (comprese motivazioni tipo che fitta in L3, il padding per false sharing etc)
+    - utili nuovi esperimenti che usano baseline vs cambiamenti miei per quanto riguarda /Users/piccoletto/Desktop/Everything/pisa/corsi/magistrale/primo_anno/SPM/project_and_midterms/module_2/src/hashjoin_seq.cpp (baseline riportata in : /Users/piccoletto/Desktop/Everything/pisa/corsi/magistrale/primo_anno/SPM/project_and_midterms/module_2/src/hashjoin_seq_baseline.cpp )
+- anche per Join motivare uso di "Partitions are distributed cyclically" rispetto ad altre distribuzioni 
+    - eventuali esperimenti per motivare questa scelta con distribuzioni diverse 
+- spiegare meglio cosa sia LPT e fare confronto con esperimenti 
+- spiegare come viene fatto controllo di correttezza 
+- deep down su strong e weack scaling e su phase breackdown 
+- spiegazioni più approfindite per ogni singolo grafico 
+- spiegazione dettagliata della Amdahl’s Law, di come viene calcolata e da dove derivino tutti i numeri riportati nel report (motivare come sia stata stimata la frazione seriale del codice!)
+    - in particolare f ≈ 0.078; theoretical S∞ ≈ 12.9×
+- spiegare l'analisi per livello e quella relativa alla partition count sensitivity 
+    - compresi sweet spots etc 
+- spiegare l'analisi sulla duplicate density 
+    - motivare soprattutto i grafici, spiegando chiaramente cose sono il key range che è circa 1/duplicate density (i grafici devono esser ben motivati e spiegati)
+
+MODULO 3
+(setup: extra_experiments/ come per M1/M2, nodo Ivy Bridge partizione normal, stesso E5-2640 v2 del report; NON toccare report/codice consegnati)
+(ESPERIMENTI FATTI 2026-07-10: module_3/extra_experiments/ con 6 esperimenti + COMPANION_M3.pdf + esperimenti_aggiuntivi_M3.pdf; i punti sotto restano come lista di studio, le risposte sono nel companion)
+- motivare scelta di singolo thread in #pragma omp single block 
+- motivare scelta di paralell for con schedule(static) per fase di scatter 
+- motivare la scelta di schedule(dynamic,1) sul join in ogni dettaglio
+    - esperimento: estendere la schedule sensitivity (fatta solo a T=8) a T in {4,16,32} e a chunk size diversi (dynamic,1/4/16, guided con chunk vari) per mostrare che la conclusione regge su tutto il range
+    - misurare l'overhead puro del dispatch dynamic a granularità fine (join con P molto alto, es. P=4096, dove il costo per-iterazione si assottiglia) per poter dire quanto costa davvero dynamic quando il lavoro per iterazione è piccolo
+    - saper spiegare il rapporto ~290x hot/cold (22.6% vs 0.078%) e da dove derivano i numeri (f_hot = rho/H + (1-rho)/P)
+- motivare la variante task e il confronto loop vs task fase per fase
+    - esperimento: isolare l'overhead di creazione task su histogram/scatter (il report dice che il gap 31% a T=16 uniforme sta lì): task per chunk vs parallel for a parità di T, sweep sul numero di task T_chunks per quantificare costo per-task
+    - esperimento: verificare la necessità del nowait sul single (misurare con e senza: il report la motiva a parole ma senza numero)
+    - saper motivare tied vs untied (il report dice untied non darebbe vantaggio: capire perché, e cosa romperebbe la lettura di omp_get_thread_num con untied)
+    - saper spiegare taskgroup vs taskwait vs barrier implicita: quali dipendenze tra fasi impongono cosa
+- motivare LPT nella variante task (già studiato in M2 esp.4 ma qui è dentro OpenMP)
+    - esperimento: task variant con e senza ordinamento LPT (ordine naturale 0..P-1 e ordine random) sotto skew, per quantificare quanto del vantaggio task viene da LPT e quanto dallo split intra-partizione
+    - saper enunciare e spiegare il bound 4/3 - 1/(3m) di Graham e perché |Rp|+|Sp| è il proxy di costo giusto
+- motivare a fondo lo split intra-partizione delle partizioni hot (l'ottimizzazione chiave del modulo)
+    - esperimento: ablation on/off dello split sotto skew, sweep della soglia hot (2x, 4x, 8x, 16x la media) e del numero di sub-task K, per mostrare che 8x non è arbitrario o quantificare quanto è insensibile
+    - esperimento: verificare empiricamente il tetto strutturale H/T: senza split, efficienza skewed vs T dovrebbe saturare a ~H/T con H=4; con split si supera. Grafico con la curva H/T teorica sovrapposta
+    - saper spiegare perché il build resta sequenziale (update concorrenti su FlatCountMap richiederebbero atomiche) e cosa costerebbe una build parallela
+- motivare il software prefetching (scatter a distanza 12, probe a distanza 8)
+    - esperimento: ablation prefetch on/off per fase (solo scatter, solo probe, entrambi) per attribuire il guadagno; il report attribuisce ~56 ms del gap M2->M3 sullo scatter al prefetch: va verificato, non solo affermato
+    - esperimento: sweep della distanza di prefetch (2,4,8,12,16,32) per motivare i valori scelti
+    - saper spiegare perché serve solo sullo stream random e non su quello sequenziale (hardware prefetcher)
+- motivare il NUMA placement first-touch
+    - esperimento: ablation con/senza zero-init parallelo (lasciare il first touch al thread sbagliato) e confronto con numactl --interleave, misurando l'effetto su scatter e join a T=16/32
+    - saper spiegare il meccanismo: allocatore default-init + resize che non tocca le pagine + prima scrittura parallela statica
+- spiegare la superlinearità apparente (eff ~1.22 a T=4)
+    - esperimento: ricompilare hashjoin_seq con le ottimizzazioni di sez. 2.4 (prefetch ecc.) e mostrare che l'offset a T=1 (1.44x) sparisce: la superlinearità è un artefatto della baseline non ottimizzata
+- deep dive sul confronto M2 vs M3 (sez. 5.6): saper attribuire il gap fase per fase
+    - il claim "il merge in omp single è parzialmente nascosto dalla regione successiva" va verificato o riformulato (misurare il costo del merge in entrambe le versioni)
+    - saper spiegare il crollo a T=20 (team a cavallo tra core fisici e SMT) e il recupero a T=32
+- motivare il generatore skew (Bernoulli mixture, rho=0.9, H=4)
+    - esperimento: sweep di rho (0.5, 0.7, 0.9, 0.99) e H (1, 4, 16) su loop vs task per mostrare dove il vantaggio task cresce/sparisce; collegare a f_hot
+    - saper spiegare perché i 4 hot key sono scelti su 4 partizioni distinte e perché la validazione skewed usa il parallelo a T=1 come riferimento (il sequenziale non genera skew)
+- spiegare ogni singolo grafico del report (strong, weak, breakdown, schedule, skew gap, m2vsm3) numero per numero, come fatto per M2
+- spiegare la validazione: perché i checksum sono invarianti all'ordine (splitmix64(k)*m mod 2^64), perché ci si ferma a T=16, il check loop==task a T=4
+
+MODULO 4
+(setup: extra_experiments/ come per gli altri; qui servono più nodi -> sbatch multi-nodo su partizione normal, stessi nodi Ivy Bridge; NON toccare report/codice consegnati)
+(ESPERIMENTI FATTI 2026-07-10: module_4/extra_experiments/ con 6 esperimenti + COMPANION_M4.pdf + esperimenti_aggiuntivi_M4.pdf; i punti sotto restano come lista di studio, le risposte sono nel companion)
+- deep dive sull'anomalia MPI_Alltoallv a 128 rank (il risultato centrale del modulo: dip 3.0x a 4 nodi)
+    - saper raccontare la catena di prova già fatta: stesso rank count su 8 nodi -> stessa anomalia (è il rank count, non i nodi); coll tuned vs basic linear -> stabile ma uniformemente lento (la varianza viene dalla selezione dell'algoritmo)
+    - esperimento: sweep del message size a rank count fisso (variare NR) per localizzare la soglia in cui l'algoritmo tuned cambia comportamento; log delle decisioni con OMPI coll verbose se disponibile
+    - esperimento: provare esplicitamente 2-3 algoritmi di coll tuned (pairwise, bruck, linear) via MCA param e confrontare mediana+varianza a 64/128/256 rank
+    - saper spiegare perché a 256 rank (8 nodi) si stabilizza (metà dati per rank, 0.5s)
+- validare il modello di Hockney usato nel weak scaling (costo per rank ~ (R-1)*alpha + beta*V)
+    - esperimento: microbenchmark ping-pong sul cluster per stimare alpha e beta reali della rete, poi verificare che la predizione del modello combaci con i tempi Alltoallv misurati (0.12s -> 3.17s per pure MPI, 15 -> 52 ms per hybrid)
+    - saper derivare perché in weak scaling il termine banda è costante per costruzione e cresce solo il numero di startup
+- motivare la metodologia di timing (MPI_Barrier prima di ogni collettiva, riduzione max tra rank)
+    - esperimento: misurare con e senza barrier per mostrare quanto skew di arrivo assorbirebbe la collettiva; motivare perché rank-max e non media
+- motivare MPI_THREAD_FUNNELED vs MULTIPLE
+    - esperimento: stessa run inizializzata con MULTIPLE (senza cambiare altro) per misurare il costo del locking interno; se non misurabile, saperlo dire onestamente (overhead solo teorico in questo codice)
+- esplorare il continuum tra pure MPI e hybrid (il report testa solo gli estremi: 32 rank/nodo e 1 rank/nodo)
+    - esperimento: sweep rank-per-nodo {1, 2, 4, 8, 16, 32} x thread per rank corrispondenti, a 4 nodi, uniforme e skew; 2 rank/nodo (uno per socket) è il candidato naturale per battere entrambi (NUMA-aware + fan-out piccolo)
+    - collegare al breakdown: dove finisce il tempo in ogni configurazione intermedia
+- motivare la scelta della collettiva bloccante vs overlap Isend/Irecv (sez. 2.3)
+    - esperimento (se il tempo lo consente): prototipo minimale di overlap solo per quantificare il bound (~7% pure MPI, ~19% hybrid) che il report stima dal breakdown senza misurarlo; in alternativa saper difendere il ragionamento costi/benefici così com'è
+- motivare dest(p) = p mod R e quantificare l'imbalance strutturale sotto skew
+    - esperimento: misurare il volume ricevuto per rank (max/media) sotto skew a 1/2/4/8 nodi: è il numero che fa da "hard floor" citato nel confronto con M3 e nel report non c'è
+    - esperimento esplorativo: remapping consapevole dei pesi (assegnare le partizioni hot a rank distinti via ordinamento greedy dei volumi dall'istogramma globale, che è già disponibile prima dello scambio) per vedere quanto si recupera senza arrivare alla replicazione del build side
+- spiegare la baseline sequenziale e i suoi numeri
+    - saper motivare -march=ivybridge (login node AVX2 vs compute node) e cosa succederebbe con -march=native
+    - saper spiegare perché la baseline skewed è più veloce (2.30s vs 4.48s): località dello scatter (3.4x) + tabelle hot cache-resident; esperimento di conferma con breakdown sequenziale uniforme vs skew se non già nei CSV
+- spiegare la scelta P=256 (nel modulo 2/3 era 128)
+    - esperimento: sweep P {128, 256, 512, 1024} a 4 nodi con vincolo P mod R = 0; effetto su bilanciamento locale e dimensione dei messaggi
+- capire comm_sizes: perché l'Alltoall dei contatori costa 10-13 ms da 2 nodi in su (dovrebbe essere ~zero); probabilmente assorbe skew residuo di arrivo nonostante il barrier: verificare
+- spiegare ogni grafico e tabella numero per numero: strong (incluso il recovery a 8 nodi), weak (0.58 vs 0.21), breakdown 4 nodi (88% comm per pure MPI uniforme), skew, crossmodule
+    - in particolare saper difendere la conclusione "la distribuzione si giustifica per capacità, non per velocità" (8 nodi hybrid 12.0x vs M3 1 nodo 10.1x) e il confronto skew (M3 6.2x vs M4 2.5x: dynamic scheduling impossibile tra memorie private)
+- spiegare la validazione: 46 configurazioni, perché il naive O(N*S) indipendente è una prova forte, vincolo P >= R sui piccoli input, skip-ahead di splitmix64 (concatenazione byte-per-byte uguale al generatore sequenziale: saperlo spiegare)
+- infine: costruire COMPANION_M3/M4 + deck esperimenti_aggiuntivi_M3/M4 con lo stesso schema e le stesse regole di stile di M1/M2 (deck neutro da mostrare al professore, niente scaffolding da bigino, grafici con titoli neutri)
+
+
+
+
+--------------------------------------------------------------------------------------------------------------------------------
+
+ulteriori TODO : 
+MOD 1 : 
+MOD 2 : 
+- giustificare in modo più semplice 8192 come proxy 
+- giustificare il costo sequenziale dello scan e soprattutto la I ≈ 0.125 FLOP/byte riportata 
+- ricontrollare ed avere chiaro cosa fa ogni singola fase 
+MOD 3 : 
+MOD 4 : 

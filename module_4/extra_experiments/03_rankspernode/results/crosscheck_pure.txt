@@ -1,0 +1,45 @@
+--- Phase Breakdown (rank -1) ---
+  Histogram_local :     11.291 ms
+  Scatter_local   :     32.784 ms
+  Comm_sizes      :     13.697 ms
+  Comm_payload    :    738.772 ms
+  Histogram_post  :     11.525 ms
+  Scatter_post    :     18.229 ms
+  Join_local      :     64.414 ms
+  Reduce_final    :     12.633 ms
+  TOTAL           :    897.458 ms
+NR=50000000 NS=100000000 P=256 seed=42 max_key=25000000 ranks=128 workload=uniform rho=0 hot=0
+join_count=199995067
+checksum1=11704407862287554203
+checksum2=9949019909254000015
+time_sec=0.909967
+--- Phase Breakdown (rank -1) ---
+  Histogram_local :     11.015 ms
+  Scatter_local   :     32.899 ms
+  Comm_sizes      :     10.588 ms
+  Comm_payload    :    796.603 ms
+  Histogram_post  :     11.447 ms
+  Scatter_post    :     17.484 ms
+  Join_local      :     63.985 ms
+  Reduce_final    :      5.675 ms
+  TOTAL           :    943.821 ms
+NR=50000000 NS=100000000 P=256 seed=42 max_key=25000000 ranks=128 workload=uniform rho=0 hot=0
+join_count=199995067
+checksum1=11704407862287554203
+checksum2=9949019909254000015
+time_sec=0.955943
+--- Phase Breakdown (rank -1) ---
+  Histogram_local :     10.935 ms
+  Scatter_local   :     32.768 ms
+  Comm_sizes      :      8.254 ms
+  Comm_payload    :   1194.927 ms
+  Histogram_post  :     11.354 ms
+  Scatter_post    :     17.425 ms
+  Join_local      :     65.462 ms
+  Reduce_final    :      4.721 ms
+  TOTAL           :   1341.143 ms
+NR=50000000 NS=100000000 P=256 seed=42 max_key=25000000 ranks=128 workload=uniform rho=0 hot=0
+join_count=199995067
+checksum1=11704407862287554203
+checksum2=9949019909254000015
+time_sec=1.353083

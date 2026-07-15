@@ -26,6 +26,20 @@
 // ============================================================
 
 // Histogram — O(N)
+//
+// Intensità operazionale (roofline). Per ogni record il loop fa:
+//   - 1 LOAD di 8 byte: la chiave (Record = { uint64_t key }), letta da un array che a
+//     N=10M pesa 80 MB >> L3 (20 MB/socket): quindi ogni chiave arriva da DRAM, una volta.
+//     -> traffico DRAM = 8 byte / record.
+//   - ++hist[pid]: read-modify-write su hist, che ha P elementi (P<=1024 -> <=4 KB): sta in
+//     L1, NON genera traffico DRAM. Quindi il denominatore del roofline sono solo gli 8 B.
+// Contando 1 "operazione utile" per record (convenzione del report): I = 1/8 = 0.125 op/byte.
+// Anche contando l'aritmetica della hash (xor, mul, shift ~= 4-5 op) l'intensità resta ~0.6
+// op/byte, ben sotto il ginocchio del roofline -> regime MEMORY-BOUND in ogni caso.
+// Misurato (extra_experiments/05_histogram_roofline): ~11 istruzioni/record per l'histogram
+// vs ~2.75 per una read pura (perf); e a 16 core l'histogram legge a ~40 GB/s = il tetto
+// della read del nodo -> il collo di bottiglia è la banda, non il calcolo (che resta nascosto
+// sotto la latenza di memoria). E' per questo che la fase Histogram scala male (2-3x a p=32).
 static std::vector<std::size_t> compute_histogram(const std::vector<Record>& rel,
                                                    std::uint32_t P, unsigned shift) {
     std::vector<std::size_t> hist(P, 0);

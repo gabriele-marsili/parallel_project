@@ -1,0 +1,18 @@
+% Deck di supporto orale: un grafico per pagina.
+% Figure ancorate dove sono scritte (niente float).
+\usepackage{float}
+\let\origfigure\figure
+\let\endorigfigure\endfigure
+\renewenvironment{figure}[1][2]{%
+  \expandafter\origfigure\expandafter[H]%
+}{%
+  \endorigfigure
+}
+% Immagini grandi e centrate, con tetto sull'altezza per lasciare spazio al testo.
+\setkeys{Gin}{width=\linewidth,height=0.52\textheight,keepaspectratio}
+% Didascalie senza etichetta "Figure N:".
+\usepackage{caption}
+\captionsetup{labelformat=empty,font=small,skip=6pt}
+% Ogni grafico (## -> subsection) parte su una pagina nuova.
+\let\oldsubsection\subsection
+\renewcommand{\subsection}{\clearpage\oldsubsection}

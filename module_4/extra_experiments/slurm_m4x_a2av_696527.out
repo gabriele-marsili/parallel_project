@@ -1,0 +1,29 @@
+[1/4] rank sweep strong (8 nodi, volume globale 150000000)
+   ranks=8 done
+   ranks=16 done
+   ranks=32 done
+   ranks=64 done
+   ranks=128 done
+   ranks=256 done
+[2/4] rank sweep weak (6M record/rank, come 2M+4M del report)
+   ranks=8 done
+   ranks=16 done
+   ranks=32 done
+   ranks=64 done
+   ranks=128 done
+   ranks=256 done
+[3/4] algoritmi {default, linear, pairwise} a 128 rank, 4 e 8 nodi
+   nodes=4 algo=default done
+   nodes=4 algo=algo1 done
+   nodes=4 algo=algo2 done
+   nodes=8 algo=default done
+   nodes=8 algo=algo1 done
+   nodes=8 algo=algo2 done
+[4/4] volume sweep a 128 rank / 4 nodi
+   recs/rank=146484 done
+   recs/rank=292969 done
+   recs/rank=585938 done
+   recs/rank=1171875 done
+   recs/rank=2343750 done
+   recs/rank=4687500 done
+ALL_DONE_MARKER

@@ -33,11 +33,14 @@ void partition_map(const spm_key_t *__restrict__ keys,
     for (size_t i = 0; i < N; i++)
     {
         // XOR-fold: combina le due metà a 32 bit della chiave
-        uint32_t k_lo = static_cast<uint32_t>(keys[i]);
-        uint32_t k_hi = static_cast<uint32_t>(keys[i] >> 32);
-        uint32_t mixed = k_lo ^ k_hi;
+        uint32_t k_lo = static_cast<uint32_t>(keys[i]); //4 byte read 
+        uint32_t k_hi = static_cast<uint32_t>(keys[i] >> 32); //4 byte read + integer op (shift) (tot:1)
+        uint32_t mixed = k_lo ^ k_hi; //integer op xor (tot:2)
         // Fibonacci multiply-shift a 32 bit
-        part_ids[i] = (mixed * HASH_A32) >> shift;
+        part_ids[i] = (mixed * HASH_A32) >> shift; //4byte write + 2 integer op (mul and shift) (tot:4)
+
+        //12byted of mem traffic ; 4 integer op => I = 4/12 ≈ 0.33 ops/byte     
+        // => kernel in bandwidth-bound region of the roofline
     }
 
     /*OSS: condizioni (soddisfatte) del compilatore per auto-vectorization:
@@ -135,7 +138,7 @@ int main(int argc, char *argv[])
                   << " max/atteso=" << std::setprecision(4) << (mx / exp) << "\n";
     }
 
-    //deallocazione (allocazione fatta con std::aligned_alloc):
+    //deallocazione (allocazione fatta con posix_memalign):
     std::free(keys);
     std::free(part_ids);
     return 0;

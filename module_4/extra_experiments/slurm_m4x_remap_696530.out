@@ -1,0 +1,13 @@
+[1/2] remap {mod,greedy} x workload, 128 rank / 4 nodi
+   remap=mod uniform
+   remap=mod skew
+   remap=greedy uniform
+   remap=greedy skew
+   remap=mod skew 8 rank done
+   remap=greedy skew 8 rank done
+[2/2] barrier {1,0} x workload, mod, 128 rank
+   barrier=1 uniform
+   barrier=1 skew
+   barrier=0 uniform
+   barrier=0 skew
+ALL_DONE_MARKER
