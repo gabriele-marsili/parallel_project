@@ -30,7 +30,7 @@ la eguaglia a costo zero.
 **Perché la barriera e non un thread pool con coda?** Perché le dipendenze fra le fasi
 impongono comunque una barriera piena a ogni confine. La coda non compra overlap, paga solo
 overhead. Misurato nell'Esp. 3 (**con grafico**: `microsync_overhead.png`): la coda costa da
-1.1× a 200× in più della barriera sul solo primitivo di sincronizzazione.
+1.1× a 198× in più della barriera sul solo primitivo di sincronizzazione.
 
 **Da dove viene I ≈ 0.125 dell'histogram?** È l'intensità operazionale (operazioni utili per
 byte letto). Derivata dal codice e **misurata** con perf nell'Esp. 5, spiegata a fondo lì.
@@ -211,12 +211,20 @@ le chiavi sono `< max_key ≤ 2^30`). Funzionamento:
 - `count(key)`: stessa scansione, ritorna `cnt` se trovi la chiave, `0` altrimenti.
 - Dimensione: `next_pow2(2 × |R_partizione|)`, cioè load factor ≤ 50%.
 
-**I vantaggi, uno per uno (il perché è più veloce):** (1) **zero allocazioni per chiave**: un
-solo vector, nessuna malloc nel loop caldo; (2) **località di cache**: gli slot sono contigui e
-il linear probing tocca slot adiacenti, spesso nella stessa cache line (4 slot per linea, quindi
-una miss porta 4 slot utili); (3) **niente pointer chasing**: l'indirizzo del prossimo slot è
-**calcolato** (`(h+1)&mask`), non letto da un puntatore, quindi il prefetcher hardware lo
-predice; l'unordered_map invece deve *leggere* il puntatore prima di sapere dove andare.
+**I vantaggi, uno per uno (il perché è più veloce):**
+
+1. **Zero allocazioni per chiave:** un solo vector, nessuna malloc nel loop caldo.
+2. **Una cache line per lookup.** La tabella è un unico array contiguo, e al load factor operativo
+   la catena è cortissima: α ≈ 0.25 nel test della cache → **1.17 probe**, α ≤ 0.5 nel caso
+   peggiore → 1.5 probe. Quindi **almeno l'83% delle lookup tocca un solo slot**, cioè una sola
+   linea. Da non vendere più di così: i "4 slot per linea" non regalano granché *qui*, perché lo
+   scorrimento quasi non avviene; contano quando la catena si allunga, cioè a α alto, dove però
+   noi non andiamo mai. Il vantaggio reale è per confronto: l'unordered_map, per la stessa lookup,
+   tocca il bucket e poi uno o più nodi sparsi sull'heap.
+3. **Niente pointer chasing:** l'indirizzo del prossimo slot è **calcolato** (`(h+1)&mask`), non
+   letto da un puntatore. Non esiste quindi la catena di dipendenze che costringe ad attendere una
+   lettura per sapere dove andare, e gli accessi sono sequenziali (prefetch-friendly). Fatto lo
+   stesso lavoro, l'unordered_map deve *leggere* il puntatore prima di poter proseguire.
 
 Ora la misura conferma il valore della struttura e giustifica il load factor:
 
@@ -236,16 +244,202 @@ probe è ~1 slot per tutte e tre.
 Il load factor conta solo **vicino al 100%**, dove il linear probing degenera. Lo misuro fissando
 la tabella e variando le chiavi distinte (`loadfactor_bench.cpp`):
 
-![Il probe esplode avvicinandosi ad alpha=100% (linear probing); x2 sta ancora nella zona piatta.](02_flatcountmap/plots/flatmap_loadfactor.png)
+![Costo di una lookup su node02 al variare del riempimento. La tabella e' fissa a 2^17 slot da 16 B = 2 MB in tutte e dieci le misure e sta sempre dentro L3 (20 MB): varia solo il numero di chiavi distinte, mai la dimensione. Il degrado e' quindi attribuibile al load factor e non alla residenza in cache (grafico piu' avanti).](02_flatcountmap/plots/flatmap_lf_time.png)
 
-Il probe è piatto (~3-10 ns) fino ad α=50%, poi sale ripido: 22 ns a α=90%, **43 ns a α=98%** (la
-forma segue Knuth, ricerca con successo ≈ ½(1+1/(1−α))). Ecco perché il sizing è
-`next_pow2(2 × record_count)` (costruttore di `FlatCountMap`, `n < r_count * 2`): garantisce
-α ≤ **50% nel CASO PEGGIORE**, cioè quando NON ci sono duplicati (tutte chiavi distinte →
-α = record / (2·record) = 50%), tenendo la tabella nella zona piatta. Con ×1 (α fino al 100% se
-tutte le chiavi sono distinte) si rischia la zona patologica; ×4 sarebbe anch'esso nella zona
-piatta ma con il **doppio** della memoria (e quindi esce prima da L3, vedi sotto). ×2 è il
-compromesso: sicuro anche nel caso peggiore, metà memoria di ×4.
+**Come leggere questo grafico (e la prima domanda da aspettarsi).** La tabella qui è **fissa a
+2^17 slot × 16 B = 2 MB in tutte e dieci le misure** (`loadfactor_bench.cpp`, `-tablelog 17`): a
+variare sono solo le chiavi distinte, D = α × 131072. Siccome 2 MB stanno comodamente in L3
+(20 MB/socket), **nessuna riga di questo test tocca la DRAM**: il degrado non è un effetto di
+cache, è il load factor e basta. È il complemento esatto del grafico dopo, che invece fa crescere
+la tabella tenendo il riempimento basso. Due assi indipendenti, due benchmark.
+
+Vale la pena essere precisi su cosa è il probe: `slot_of(key) = key & mask` **salta** direttamente
+alla posizione, non scorre. Il `while` avanza solo se lo slot è occupato da un'**altra** chiave.
+Quindi la variabile rilevante non è "quanto sono lontane le chiavi" (non le attraversi mai) ma
+"quanto è probabile atterrare su un slot già occupato", che è ~α, aggravato dal fatto che nel
+linear probing gli occupati si aggregano in cluster e ogni chiave che ci cade dentro li allunga.
+
+I numeri: 3.6 ns a α=10%, **10.4 a α=50%**, 22.2 a α=90%, **42.7 a α=98%**.
+
+**Perché proprio α ≤ 0.5 (non è il ginocchio della curva).** La spiegazione naturale sarebbe che
+0.5 cade dove la curva si piega. Il grafico la smentisce: la curva sale in modo regolare e accelera
+solo dopo α=0.9. Il vincolo è invece strutturale, e discende da `slot_of`.
+
+`slot_of` ricava la posizione con `key & mask`, che sostituisce il modulo **solo** se il numero di
+slot è una potenza di due. La dimensione della tabella è quindi vincolata a essere una potenza di
+due, e fissato il numero di record r le dimensioni ammissibili non formano un continuo: si passa da
+`next_pow2(r)` al suo doppio, poi al quadruplo. Non si può allocare il 20% in più, solo il doppio.
+
+Da qui il tetto di α, che si ricava in un passaggio. La tabella è dimensionata al più piccolo
+valore potenza di due che sia almeno m volte il numero di record: `n = next_pow2(m*r)`. Nel caso
+peggiore le chiavi sono tutte distinte, quindi quelle inserite sono r e il riempimento è r/n.
+Siccome per costruzione `n ≥ m*r`:
+
+    α = r/n ≤ r/(m*r) = 1/m
+
+Il tetto vale dunque **1/m**, ed è raggiunto quando `n` coincide con `m*r`, cioè quando r è una
+potenza di due e `next_pow2` non arrotonda nulla (verificato per m = 1, 2, 4 su r = 1..29999: il
+tetto è toccato **solo** dalle potenze di due). Le uniche opzioni:
+
+| sizing | α nel caso peggiore | tetto |
+|---|---|---|
+| ×1 `next_pow2(r)` | [0.500, 1.000] | **1.000** |
+| ×2 `next_pow2(2r)` | [0.250, 0.500] | **0.500** |
+| ×4 `next_pow2(4r)` | [0.125, 0.250] | **0.250** |
+
+In questa famiglia non esistono valori intermedi: il moltiplicatore raddoppia, quindi il tetto si
+dimezza. (Per precisione, da dire se te lo chiedono: un moltiplicatore *non* potenza di due darebbe
+tetti intermedi — m = 4/3 dà esattamente 0.75 — ma al prezzo di una regola in cui l'occupazione
+dipende da dove cade r rispetto alla potenza di due più vicina, e senza l'identità qui sopra.)
+
+**Il limite di ×1 non è prestazionale.** Con ×1 il tetto è 1.000: quando r è una potenza di due e
+le chiavi sono tutte distinte la tabella è piena, zero slot liberi. Il `while` di `count()`
+(`join_phases.hpp`) esce solo su slot vuoto o su chiave uguale: con la tabella piena e una chiave
+**assente** non si verifica nessuna delle due condizioni e il ciclo non termina. Nel join la chiave
+assente è lo scenario ordinario (una chiave di S che non compare in R), e r = 1024, 2048, 32768
+sono dimensioni di partizione del tutto plausibili. Verificato eseguendolo.
+
+**In sintesi:** fra i sizing che garantiscono la terminazione, ×2 è quello con la **minima
+occupazione di memoria** (2 volte i record, contro le 4 di ×4), e **α ≤ 0.5 è il tetto più alto
+fra quelli ammissibili**. Da tenere distinte le due grandezze: il riempimento più basso di ×4
+(0.250) non è un costo minore, è memoria in più spesa per stare più lontani dal tetto.
+
+**Perché non ×4.** Al punto operativo non produce guadagno, ed è misurato. Il confronto diretto a parità di dati (`flatmap_impl.csv`):
+
+| sizing | tabella | α | probe |
+|---|---|---|---|
+| ×2 | 2.0 MB | 0.153 | 4.681 ns |
+| ×4 | 4.0 MB | 0.076 | **4.648 ns** |
+
+Lo **0.7%**, per il doppio della memoria. Nella configurazione consegnata è ancora più netto:
+NR=10M, P=512, max_key=1M danno **19531 record e ~1953 chiavi distinte per partizione** (10 record
+per chiave), quindi con ×2 il riempimento **operativo** è **0.030**: la tabella è vuota al 97% e
+sta ben dentro il tratto piatto della curva. Con ×4 sarebbe vuota al 98.5%, cioè niente.
+
+Il vantaggio di ×4 (probe da 10.4 a 5.7 ns) esiste **solo nel caso peggiore a zero duplicati**, che
+questo carico non raggiunge mai. Usarlo per giustificare la scelta sarebbe scorretto: ×2 non
+ottimizza il caso operativo, **limita il caso peggiore al costo minimo che lo rende sicuro**.
+
+**Onestà 1 (dire questo prima che lo dica il prof):** "piatto fino al 50%" sarebbe una lettura
+generosa del grafico. Da α=0.1 a α=0.5 il costo **quasi triplica** (3.6 → 10.4 ns, 2.9×; 2.7× nel
+re-run di controllo, vedi sotto); il tratto
+davvero piatto finisce verso α=0.25. Lo x2 non è gratis: è un caso peggiore *limitato* (~10 ns)
+contro un caso peggiore *illimitato*.
+
+**Onestà 2, l'accordo con Knuth: il modello sbaglia i probe o il costo per probe?** Il modello
+pertinente è la ricerca **con successo**, ½(1+1/(1−α)), perché il bench cerca solo chiavi presenti
+(la ricerca *senza* successo è ½(1+1/(1−α)²) — il quadrato sta su (1−α), non su tutto — formula
+diversa e molto più ripida: a α=0.5 dà 2.5 probe contro 1.5, a α=0.98 dà 1250 contro 25.5. Non
+confonderle). I ns misurati **non** sono proporzionali ai probe attesi, e la domanda è perché.
+Ci sono due possibilità, e `probe_count_bench.cpp` le separa **contando** gli slot visitati invece
+di cronometrarli (stesse chiavi, stesse α, stessa tabella di `loadfactor_bench.cpp`):
+
+![Probe medi per lookup, cioe' per singola chiave cercata (il bench cerca ogni chiave esattamente una volta). La curva e' il modello di Knuth per il linear probing con ricerca CON successo; i punti sono i probe effettivamente contati. Coincidono entro il 2-9%: la combinatoria del modello e' corretta, quindi il disaccordo sui tempi non sta qui.](02_flatcountmap/plots/flatmap_lf_probes.png)
+
+| α | probe CONTATI | Knuth | ns misurati | ns / probe eseguito | KB toccati dal probe |
+|---|---|---|---|---|---|
+| 0.10 | 1.059 | 1.056 | 3.6 | 3.4 | 680 |
+| 0.50 | 1.505 | 1.500 | 10.4 | 6.9 | 1819 |
+| 0.90 | 5.375 | 5.500 | 22.2 | 4.1 | 2035 |
+| 0.98 | 23.296 | 25.500 | 42.7 | 1.8 | 2046 |
+
+**Knuth ha ragione**: i probe contati coincidono con quelli attesi entro il 2-9%. Quindi il
+disaccordo non è nella combinatoria, è **tutto nel costo per probe**, che varia da 1.8 a 7.4 ns e
+non è nemmeno monotono (massimo ad α=0.6). Il modello conta i probe, non i cicli.
+
+**Perché il costo per probe non è costante.** "ns per probe" è una media su accessi che costano
+cose molto diverse, e da qui la sua forma irregolare. Una lookup è fatta di due componenti
+distinte:
+
+1. **un** accesso iniziale in posizione casuale (`key & mask` salta dove capita);
+2. **(probe − 1)** accessi di *seguito*, che per costruzione cadono nello slot successivo, cioè
+   sequenziali e con l'indirizzo **calcolato** (`h = (h+1) & mask`), non letto da memoria.
+
+Cioè: `ns(α) = C_primo(α) + (probe(α) − 1) × C_seguito`.
+
+**Come si ricavano i due termini (l'algebra, non "si stima").** Il footprint è **saturo** per
+α ≥ 0.90 (2035 → 2046 KB, fermo), quindi lì `C_primo` è costante e si **cancella nella
+differenza** fra due punti di quella regione:
+
+    ns(0.98) − ns(0.90) = [probe(0.98) − probe(0.90)] × C_seguito
+    C_seguito = (42.749 − 22.173) / (23.296 − 5.375) = 20.576 / 17.921 = 1.148 ns
+
+Questo passaggio non dipende dal modello: è la pendenza misurata dove l'altro termine è fermo.
+Noto `C_seguito`, `C_primo` si ottiene per differenza punto per punto:
+
+    C_primo(α) = ns(α) − [probe(α) − 1] × C_seguito
+    es. α=0.50:  10.439 − (1.505 − 1) × 1.148 = 10.439 − 0.580 = 9.86 ns
+
+![Decomposizione del costo di una lookup. Il primo accesso cade in posizione casuale e costa da 3.5 a 17 ns a seconda di quanto footprint e' stato toccato; ogni accesso successivo e' sequenziale, con l'indirizzo calcolato invece che letto, e costa 1.15 ns, circa 3 cicli. L'asse verticale riporta il costo di un singolo accesso, non di una lookup intera: il costo della lookup completa, C_primo + (probe-1) x C_seguito, e' il grafico piu' sopra. La media fra i due valori rende "ns per probe" non costante.](02_flatcountmap/plots/flatmap_lf_cost.png)
+
+| α | C_primo | C_seguito | KB toccati |
+|---|---|---|---|
+| 0.10 | 3.53 ns | 1.15 ns | 680 |
+| 0.50 | 9.86 ns | 1.15 ns | 1819 |
+| 0.90 | **17.15 ns** | 1.15 ns | 2035 |
+| 0.95 | **17.46 ns** | 1.15 ns | 2042 |
+| 0.98 | **17.15 ns** | 1.15 ns | 2046 |
+
+`C_primo` cresce col footprint toccato e **satura a ~17 ns esattamente dove satura il footprint**
+(2035 → 2046 KB), su un valore che è l'ordine di grandezza di una latenza L3. Da qui tutto il
+resto:
+
+- **α basso (0.1 → 0.5):** i probe sono ancora ~1, quindi la lookup costa quasi solo `C_primo`, che
+  però sta crescendo (3.5 → 9.9 ns) perché il footprint passa da 680 a 1819 KB. Risultato: probe
+  **+42%**, tempo **+190%**. Knuth non modella il footprint, quindi qui **sotto**-predice.
+- **α alto (0.9 → 0.98):** `C_primo` è saturo e le catene si allungano, ma ogni accesso in più
+  costa 1.15 ns invece di 17. Risultato: probe **+333%**, tempo solo **+93%**. Knuth conta quei
+  probe come se costassero quanto il primo, quindi **sovra**-predice.
+
+Da α=0.1 a α=0.98 predice **24×**, la misura dà **11-12×** (11.9× nel CSV, 10.7× nel re-run). E
+la stessa decomposizione spiega perché la FlatCountMap batte l'unordered_map: là *ogni* passo è un
+salto di puntatore, cioè paga `C_primo` ogni volta; qui lo paga solo il primo.
+
+**Perché un accesso di seguito costa ~3 cicli (e perché NON è "sta nella stessa cache line").**
+La spiegazione facile sarebbe che la catena resta dentro una linea (4 slot da 16 B). È falsa
+proprio dove serve: la catena media è 5.4 slot ad α=0.90 e **23.3 ad α=0.98**, cioè attraversa
+~1.3 e **~5.8 cache line**. Il motivo vero è che l'indirizzo successivo è **calcolato**
+(`h = (h+1) & mask`), non letto: non esiste la catena di dipendenze del pointer chasing, quindi la
+CPU può correre avanti e sovrapporre gli accessi, e il flusso è sequenziale (prefetch-friendly). Il
+costo marginale è limitato dal **throughput**, non dalla latenza. È esattamente ciò che
+l'unordered_map non può fare: lì il prossimo indirizzo va letto prima di sapere dove andare.
+
+**E non dipende da α ≤ 0.5:** `C_seguito` è misurato ad α = 0.90-0.98, lontanissimo da 0.5. La
+contiguità è una proprietà del linear probing in sé; il load factor decide *quanti* accessi di
+seguito fai, non *quanto costa ciascuno*.
+
+*Limiti (da conoscere prima che li trovi il prof):*
+
+- `C_seguito` **costante** è un'assunzione, verificata **solo** nella regione satura, dove due
+  pendenze locali indipendenti danno **1.210** (α: 0.90→0.95) e **1.124** (0.95→0.98). Sotto
+  α=0.90 non c'è evidenza diretta, perché lì le pendenze locali misurano la crescita di `C_primo`.
+- L'impatto di quell'assunzione è però **limitato dove non è verificata**: il termine
+  `(probe−1)×C_seguito` pesa l'1.9% del totale ad α=0.10, il 5.6% ad α=0.50, l'8.8% ad α=0.70.
+  Anche raddoppiando `C_seguito`, `C_primo` cambierebbe dell'1.9% ad α=0.10 e del 5.9% ad α=0.50.
+- L'attribuzione di `C_primo` ai livelli di cache è **per ordine di grandezza**, non misurata con i
+  contatori hardware.
+- Controllo indipendente: α=0.95 **non** entra nella stima di `C_seguito` e `C_primo` vi cade entro
+  il 2% degli altri due punti saturi.
+
+**Riproducibilità (rilanciato su node02 il 16/07, job slurm 706972).** Le due metà di questo
+esperimento si riproducono in modo molto diverso, ed è bene saperlo prima che lo chieda il prof:
+
+- `probe_count.csv` è **aritmetica intera deterministica** (niente clock, niente thread). Rilanciato
+  su tre macchine diverse — Mac (clang, arm64), node09 e node02 (GCC 12.2, x86_64) — restituisce lo
+  **stesso MD5**, byte per byte. Se cambiasse, sarebbe un bug, non rumore di misura.
+- `loadfactor.csv` sono **ns wall-clock** (best-of-9) e sono specifici di node02. Il re-run li
+  riproduce entro l'**1% su 7 α su 10**; +3-7% ad α=0.4/0.5/0.6 e **+11.9% ad α=0.10**, che è la
+  misura più piccola (~4 ns) e quindi la più sensibile al rumore. I dati grezzi del controllo sono
+  in `results/loadfactor_rerun_node02.csv`.
+
+Le conclusioni non dipendono da quello scarto: il costo marginale dei probe extra viene **1.15 ns**
+nel CSV e **1.16 ns** nel re-run, e il costo per probe varia 1.8-7.4 contro 1.8-7.6, con il massimo
+ad α=0.6 in entrambi. Il CSV committato resta l'artefatto di riferimento: il re-run lo conferma,
+non lo sostituisce.
+
+*Limite:* il footprint è misurato (linee distinte toccate), ma attribuire i ns ai singoli livelli
+di cache richiederebbe i contatori hardware, e non è stato fatto: la correlazione footprint-tempo
+ad α basso è forte ma resta correlazione.
 
 **Perché "fitta in L3" conta.** Facendo crescere il numero di chiavi distinte la tabella cresce e
 attraversa i livelli di cache:
@@ -268,10 +462,14 @@ le due strutture divergono:
   **casuali e imprevedibili**. Il prefetcher non può anticiparli (deve prima *leggere* il
   puntatore per sapere dove andare), quindi ogni salto è un miss a piena latenza, e un lookup ne
   può incatenare diversi (bucket, poi nodo, poi nodo successivo).
-- La FlatCountMap fa **linear probing**: il primo slot è un miss casuale, ma gli slot che scorre
-  poi (`h = (h+1) & mask`) sono **contigui in memoria**, spesso nella stessa cache line (4
-  slot/linea) o nella prossima, che il prefetcher carica in anticipo. Quindi paga ~un miss a
-  piena latenza per lookup, non diversi.
+- La FlatCountMap fa **linear probing**, e a questo load factor lo scorrimento **quasi non
+  avviene**: il sizing ×2 e i duplicati di R tengono α ≈ 0.25 in tutte le righe del test, dove i
+  probe contati sono **1.167 per lookup** (`probe_count.csv`), cioè in media 0.167 probe *extra*:
+  ne segue che **almeno l'83% delle lookup tocca un solo slot**. Paga quindi ~un miss a piena
+  latenza per lookup, non diversi — non perché lo scorrimento sia prefetchato, ma perché non c'è
+  quasi niente da scorrere. Nei pochi casi in cui prosegue, l'indirizzo successivo è **calcolato**
+  (`h = (h+1) & mask`) e sequenziale, quindi la CPU può sovrapporlo invece di attenderlo: costa
+  ~1.15 ns, non un miss (vedi la decomposizione più su).
 
 In sintesi: fuori da L3 entrambe pescano da DRAM, ma la FlatCountMap trasforma accessi casuali in
 accessi **sequenziali e predicibili**, l'unordered_map no. Il costo della latenza si moltiplica
@@ -332,12 +530,12 @@ il primitivo di sincronizzazione. Due misure.
 
 ![Costo puro di un confine di fase: la coda di task costa molto piu' della barriera.](03_barrier_vs_threadpool/plots/microsync_overhead.png)
 
-La barriera costa da 37 ns (1 thread) a 32 µs (32 thread); la coda da 7.5 µs a 36 µs. La coda è
-**sempre** più cara (200× a 1 thread, ~1.1× a 32 thread, dove entrambe sono dominate dal costo
+La barriera costa da 37 ns (1 thread) a 32 µs (32 thread); la coda da 7.4 µs a 37 µs. La coda è
+**sempre** più cara (198× a 1 thread, ~1.1× a 32 thread, dove entrambe sono dominate dal costo
 fisico di svegliare k thread).
 
 **(2) La pipeline reale end-to-end** (`pipeline_barrier_vs_pool.png`): qui le due **pareggiano**
-(a p=32: 89.5 vs 89.4 ms), perché il lavoro delle fasi (millisecondi) domina il sync
+(a p=32: 87.0 vs 86.5 ms), perché il lavoro delle fasi (millisecondi) domina il sync
 (microsecondi).
 
 **La motivazione, e le dipendenze dati.** La pipeline è *bulk-synchronous*: histogram →
@@ -501,7 +699,7 @@ a 16 core raggiunge **40 GB/s**, cioè **lo stesso tetto della read pura**. Ques
 a scala l'histogram legge le chiavi alla massima banda del nodo, e il calcolo extra (la hash) è
 completamente nascosto: è la **definizione** di memory-bound, misurata.
 
-![Roofline: con I=0.125 l'histogram vive nella regione memory-bound (tetto = banda).](05_histogram_roofline/plots/roofline_histogram.png)
+![Roofline: l'histogram è memory-bound con entrambe le convenzioni di conteggio. Contando 1 op/record I=0.125, contando anche le ~5 op della hash I≈0.62: i due punti scivolano sulla stessa diagonale della banda (throughput e I scalano insieme), mai verso il tetto di calcolo. Il "memory-bound" non dipende dalla convenzione.](05_histogram_roofline/plots/roofline_histogram.png)
 
 **Corroborazione con perf, e col report.** Con `perf` (contando le istruzioni retired) l'histogram
 esegue **~11 istruzioni per record** contro **~2.75 della read pura**: fa 4× più istruzioni, eppure
@@ -525,7 +723,17 @@ p → ∞, `S∞ = 1/f`.
 **Come si stima f (il metodo, in concreto).** f non si conta dal codice; si **fitta**. Si prende
 la curva di speedup misurata S(p) (dai dati di strong scaling) e si cerca il valore di f che la
 riproduce meglio, minimizzando la somma dei quadrati degli scarti fra i punti misurati e la curva
-del modello (least-squares, `scipy.optimize.curve_fit`). Ho rifatto il fit sui CSV consegnati:
+del modello (least-squares, `scipy.optimize.curve_fit`).
+
+Perché un valore preciso esca dai dati si capisce girando il modello al reciproco:
+`1/S(p) = f + (1−f)/p`, cioè `1/S(p) − 1/p = f·(1 − 1/p)`. È una retta per l'origine di pendenza f:
+ponendo `y = 1/S − 1/p` e `x = 1 − 1/p`, ogni singolo thread count misurato dà già una stima
+`f = (1/S − 1/p)/(1 − 1/p)`. Sui dati NR=20M queste stime si assestano su ~0.078 ai p alti
+(0.074 a p=16, 0.077 a p=24, 0.075 a p=32); ai p bassi deviano verso l'alto (0.38 a p=2, 0.18 a
+p=4), che è il residuo visibile nel pannello sotto. Il least-squares non fa che combinare tutte
+queste stime in un solo numero, pesando di più i p alti dove S è grande (per questo `curve_fit`
+dà 0.078 e non lo 0.094 di una regressione lineare che pesasse uguale anche i p bassi deviati). Ho
+rifatto il fit sui CSV consegnati:
 
 ![Come si stima f: least-squares del modello Amdahl sui dati misurati, con residui e R^2.](06_amdahl/plots/amdahl_fit.png)
 
@@ -535,6 +743,31 @@ pannello dei residui mostra che il fit non è perfetto ai punti bassi (a p=2 lo 
 un po' sotto la curva): Amdahl è un modello a **un solo parametro**, e i punti che deviano ci
 dicono che quel parametro sta riassumendo effetti diversi in un unico numero. (Per NR=10M il fit
 dà f=0.087, S∞=11.4; il report pubblica la coppia della 20M.)
+
+**Perché è un solo numero (e non le stime punto-per-punto).** La formula del reciproco dà una
+stima di f per ogni p, e queste variano (0.38 a p=2, ~0.075 ai p alti). Il valore pubblicato non è
+nessuna di quelle né la loro media: è il minimo della funzione **errore totale**, che dipende solo
+da f (p e S sono i dati fissi):
+
+```
+E(f) = somma su tutti i p di [ S_misurato(p) − 1/(f + (1−f)/p) ] al quadrato
+```
+
+Per ogni f si disegna la curva del modello, si misura di quanto manca ogni punto, si eleva al
+quadrato e si somma. E(f) è una conca con un solo fondo; quel fondo è f. Calcolata da
+`plot_amdahl.py` sui dati NR=20M, P=128:
+
+```
+    f=0.020 → E=548.7      f=0.078 → E=  1.97  ← minimo
+    f=0.050 → E= 58.2      f=0.085 → E=  4.11
+    f=0.070 → E=  4.85     f=0.094 → E= 11.1
+                           f=0.120 → E= 45.1
+```
+
+f è unico perché la conca ha un solo fondo, non perché i punti convergano ai p alti (che cadano
+vicino allo 0.078 è solo perché il least-squares su S pesa di più i p con S grande: minimizzando
+invece su 1/S, a peso uniforme, uscirebbe 0.094). `curve_fit` scende lungo la pendenza da 0.05
+fino a dove dE/df = 0 e trova f = 0.078 → S∞ = 12.9.
 
 **Perché quella f è *apparente* e non è il codice seriale (qui la parte che il prof cercherà).**
 Se guardo il codice, l'unica parte davvero seriale è la *barrier completion*: il merge dei k
@@ -831,7 +1064,7 @@ Da dire spontaneamente all'orale (mostra spirito critico):
 - Baseline di partenza → versione consegnata: **1.58×** end-to-end, tutto nel join (732 → 286 ms), e solo con fib **e** FlatCountMap insieme.
 - FlatCountMap: open addressing + linear probing, slot 16 B (4/cache line), load factor ≤50%; probe **4×** più veloce di unordered_map; vantaggio fino a 3.5× sul join a max_key=10M (poche duplicazioni); crossover L3.
 - Chiavi distinte = palline nelle urne: max_key·(1−e^(−NR/max_key)), NON min(NR,max_key). A max_key=NR=10M sono 6.32M (1.58 record/chiave), non 10M.
-- Barriera vs pool: coda più cara sul sync (fino a 200×), pari end-to-end; dipendenze = bulk-synchronous.
+- Barriera vs pool: coda più cara sul sync (fino a 198×), pari end-to-end; dipendenze = bulk-synchronous.
 - Load balance join: uniforme tutte pari entro il rumore (cyclic a costo zero); skew block collassa (imb 10.8), cyclic/dynamic/LPT al pavimento 3.62.
 - Histogram: I = 0.125 op/byte; 4.7 GB/s a 1 core, ~40 GB/s (= tetto read) a 16 core → memory-bound; ~11 istr/record (perf).
 - False sharing: padded vs packed fino a 2.2×.

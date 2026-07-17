@@ -2,6 +2,10 @@
 
 Parallel implementation of the partitioned hash join pipeline using C++ threads.
 
+> **Fasi e complessità**: vedi `utils/GUIDA_SVILUPPO_MODULO2.pdf` (sez. 5–6) per la spiegazione
+> di ogni fase (histogram, merge/offset, scatter, join), le complessità work/span e la
+> motivazione del numero di thread adattivo (`k_opt ~ √(N/P)`, `Tmin = 8192`).
+
 ## Project Structure
 
 ```

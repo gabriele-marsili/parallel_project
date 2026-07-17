@@ -31,6 +31,11 @@ Sfit = amdahl(p, f)
 ss_res = np.sum((S - Sfit) ** 2); ss_tot = np.sum((S - S.mean()) ** 2)
 R2 = 1 - ss_res / ss_tot
 
+# funzione errore E(f) = somma degli scarti al quadrato fra misura e modello.
+# Dipende solo da f (p e S sono i dati): il fit e' il valore di f che la minimizza.
+def E(fval): return float(np.sum((S - amdahl(p, fval)) ** 2))
+E_grid = [(fv, E(fv)) for fv in (0.02, 0.05, 0.07, f, 0.085, 0.094, 0.12, 0.20)]
+
 # ── Fig 1: fit + residui ──
 fig, (ax, axr) = plt.subplots(2, 1, figsize=(9, 7), height_ratios=[3, 1], sharex=True)
 pf = np.linspace(1, 33, 200)
@@ -85,6 +90,10 @@ plt.close(fig)
 
 print("=== Esp.6 numeri ===")
 print(f"  fit P=128: f={f:.4f} S_inf={1/f:.1f} R2={R2:.4f}")
+print("  E(f) = somma scarti^2 (il fit e' il minimo):")
+for fv, ev in E_grid:
+    mark = "  <- minimo" if abs(fv - f) < 1e-9 else ""
+    print(f"    f={fv:.3f} -> E={ev:8.3f}{mark}")
 print(f"  fit P=512: f={f512:.4f} S_inf={1/f512:.1f}")
 print(f"  seriale letterale P=128 @t=32: {sf128['serial_frac'].iloc[-1]*100:.3f}%")
 print(f"  seriale letterale P=512 @t=32: {sf512['serial_frac'].iloc[-1]*100:.3f}%")

@@ -23,6 +23,34 @@ python3 plot_amdahl.py    # in locale (usa anche i CSV del report)
 - Seriale LETTERALE misurato (merge+prefix), P=128 @ t=32: **0.095%** del tempo.
 - Seriale LETTERALE misurato, P=512 @ t=32: 1.09%.
 
+## Perche' f e' un numero unico: il minimo della funzione errore E(f)
+
+f non e' nessuna delle stime punto-per-punto (`(1/S - 1/p)/(1 - 1/p)`, che variano con p). E'
+il valore che minimizza la funzione **errore totale**, che dipende solo da f (p e S sono i dati):
+
+```
+E(f) = somma su tutti i p di [ S_misurato(p) - 1/(f + (1-f)/p) ] al quadrato
+```
+
+Per ogni f si disegna la curva del modello, si misura di quanto manca ogni punto, si eleva al
+quadrato e si somma. E(f) e' una conca con un solo fondo; quel fondo e' f. Tabella calcolata da
+`plot_amdahl.py` sui dati NR=20M, P=128:
+
+```
+    f=0.020 -> E= 548.725
+    f=0.050 -> E=  58.230
+    f=0.070 -> E=   4.846
+    f=0.078 -> E=   1.973   <- minimo
+    f=0.085 -> E=   4.105
+    f=0.094 -> E=  11.100
+    f=0.120 -> E=  45.080
+    f=0.200 -> E= 164.528
+```
+
+Il numero e' unico perche' la conca ha un solo fondo, non perche' i punti convergano ai p alti.
+`curve_fit` trova questo minimo per via numerica (parte da 0.05, scende lungo la pendenza fino a
+dove la derivata dE/df si annulla): da' f = 0.0776 -> S∞ = 12.9.
+
 ## Lettura (come difenderlo)
 
 1. f si **stima col fit** (least-squares), non si conta dal codice. R²=0.98 -> i dati seguono

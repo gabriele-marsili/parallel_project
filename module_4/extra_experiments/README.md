@@ -11,7 +11,14 @@ Materiale a sé, separato dal codice e dal report consegnati (che non vengono to
   `threadlevel_bench.cpp` (driver ibrido con -threadlevel e -reps, riusa la pipeline
   consegnata).
 - `0N_*/run.sbatch` — job SLURM multi-nodo; `0N_*/plot_*.py` — grafici dai CSV;
-  `0N_*/results/` — dati misurati (job 696527-696532, nodi Ivy Bridge, fino a 8 nodi).
+  `0N_*/results/` — dati misurati (job 696527-696532, nodi Ivy Bridge, fino a 8 nodi;
+  esp. 7: job 707282-707283).
+
+Gli esperimenti: `01` anatomia di Alltoallv (più il corollario sulla scelta di Alltoallv
+contro Isend/Irecv con overlap), `02` coefficienti di Hockney misurati, `03` continuum
+rank per nodo, `04` imbalance e remapping sotto skew, `05` sensibilità a P, `06` FUNNELED
+contro MULTIPLE, `07` quale algoritmo sceglie la libreria (spiega la forma della curva di
+strong scaling e corregge due affermazioni del report).
 
 Esecuzione: `bash build.sh` sul login node (compila in `bin/` con -march=ivybridge),
 poi `sbatch 0N_cartella/run.sbatch` da `~/module_4/extra_experiments`.

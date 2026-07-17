@@ -71,4 +71,48 @@ ax.set_title("Verifica del modello sul weak scaling: domina il volume per scheda
 ax.grid(ls=":", alpha=0.45, which="both"); ax.set_axisbelow(True); ax.legend(fontsize=9.5)
 fig.tight_layout()
 fig.savefig(os.path.join(OUT, "hockney_check.png"), dpi=170)
+plt.close(fig)
+
+# --------------------------------------------------------------------- Figura 3
+# Prova per esclusione, nel weak DEL REPORT: 32 rank per nodo, nodi 1/2/4/8, quindi rpn
+# resta costante e a crescere e' la quota off-node. Se il collo fosse l'algoritmo (come
+# nello strong), forzare il migliore riporterebbe la curva al tetto. Non succede.
+wa = pd.read_csv(os.path.join(RES, "weak_algo.csv"))
+NODES_W = [1, 2, 4, 8]
+SER = {                       # colore, marker, tratteggio: l'identita' non e' solo il colore
+    "default":      ("#1565C0", "s", "-",  "default (la decision function)"),
+    "dyn_linear":   ("#D32F2F", "o", "--", "basic linear forzato"),
+    "dyn_pairwise": ("#2E7D32", "^", "-.", "pairwise forzato"),
+}
+def tetto_w(n):               # volume off-node per nodo / banda; a 1 nodo non c'e' rete
+    R = n * 32
+    return None if n == 1 else 32 * V_RANK_MB * ((R - 32) / R) / BW_MBPS
+
+fig, ax = plt.subplots(figsize=(9.6, 5.3))
+for key, (c, mk, ls, lab) in SER.items():
+    med = [wa[(wa.label == key) & (wa.nodes == n)].t_max_s.median() for n in NODES_W]
+    ax.plot(NODES_W, med, marker=mk, ls=ls, color=c, lw=2, markersize=8, label=lab, zorder=3)
+    sub = wa[wa.label == key]
+    ax.scatter(sub.nodes, sub.t_max_s, color=c, s=8, alpha=0.25, zorder=2, linewidths=0)
+ax.plot(NODES_W[1:], [tetto_w(n) for n in NODES_W[1:]], ls=":", color="#222222", lw=2,
+        label="tetto: volume off-node per NIC / banda", zorder=1)
+ax.plot(NODES_W, [(n * 32 - 1) * ALPHA_US / 1e6 + V_RANK_MB / BW_MBPS for n in NODES_W],
+        ls=":", color="#7B1FA2", lw=1.8, label="modello startup del report: (R-1) alpha + beta V",
+        zorder=1)
+ax.annotate("a 2 nodi il default è AL TETTO:\n0.671 contro 0.668 predetti", xy=(2, 0.671),
+            xytext=(2.35, 0.26), fontsize=8.5, color="#222222",
+            arrowprops=dict(arrowstyle="->", color="#222222", lw=1.1))
+ax.text(1.05, 0.052, "il modello startup del report resta piatto a 42-47 ms",
+        fontsize=8.5, color="#7B1FA2")
+ax.set_xscale("log", base=2); ax.set_yscale("log")
+ax.set_xticks(NODES_W)
+ax.set_xticklabels([f"{n} nodo\n32 rank" if n == 1 else f"{n} nodi\n{n*32} rank" for n in NODES_W])
+ax.set_xlabel("weak scaling del report: 32 rank per nodo, 48 MB per rank")
+ax.set_ylabel("tempo Alltoallv, max fra i rank (s)")
+ax.set_title("Nel weak nessun algoritmo salva la curva: il collo è la banda per scheda di rete",
+             fontsize=11.5)
+ax.grid(ls=":", alpha=0.45, which="both"); ax.set_axisbelow(True)
+ax.legend(fontsize=9, loc="upper left")
+fig.tight_layout()
+fig.savefig(os.path.join(OUT, "weak_algo.png"), dpi=170)
 print(f"alpha={ALPHA_US:.1f}us  bw={BW_MBPS:.0f}MB/s  ->", OUT)

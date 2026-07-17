@@ -34,16 +34,20 @@ for T in 4 8 16 32; do
 done
 
 # --- 2) granularità fine: P alto assottiglia il lavoro per iterazione ---
-# static vs dynamic1 a T=16 uniforme: l'eventuale gap misura l'overhead di
-# dispatch di dynamic quando ogni iterazione è piccola.
+# static vs dynamic1 a T=16, su entrambi i workload: su uniforme il gap misura
+# l'overhead di dispatch di dynamic quando ogni iterazione è piccola, su skew
+# dice se il bilanciamento ripaga quell'overhead al crescere di P.
 CSV2="$OUT/schedule_granularity.csv"
 : > "$CSV2"; first=1
-echo "[2/2] granularità: P in {128,512,2048,4096,8192}, static vs dynamic1, T=16 uniforme"
+echo "[2/2] granularità: P in {128,512,2048,4096,8192}, static vs dynamic1, T=16, uniform+skew"
 for P in 128 512 2048 4096 8192; do
   for SCHED in static dynamic1; do
-    ARGS="-nr $NR -ns $NS -seed $SEED -max-key $MK -p $P -t 16 -mode loop -sched $SCHED -reps $REPS"
-    if [ $first = 1 ]; then $BIN $ARGS >> "$CSV2"; first=0
-    else $BIN $ARGS | tail -n +2 >> "$CSV2"; fi
+    for WL in uniform skew; do
+      ARGS="-nr $NR -ns $NS -seed $SEED -max-key $MK -p $P -t 16 -mode loop -sched $SCHED -reps $REPS"
+      [ "$WL" = skew ] && ARGS="$ARGS -skew 0.9 -hot 4"
+      if [ $first = 1 ]; then $BIN $ARGS >> "$CSV2"; first=0
+      else $BIN $ARGS | tail -n +2 >> "$CSV2"; fi
+    done
   done
   echo "   P=$P done"
 done

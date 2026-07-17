@@ -19,14 +19,25 @@ Cinque mappe `k -> [0,P)`, tutte con P potenza di due:
 | `fib32_lowbits` | `((k_lo ^ k_hi) * A32) & (P-1)` | prende i bit BASSI del prodotto: isola il perché dello shift |
 | `mult32_nofold` | `(k_lo * A32) >> shift` | niente XOR-fold: isola il perché del folding |
 
-Sei distribuzioni di chiavi (seed 42, generatore xoshiro256\*\* identico a `common.hpp`):
+Sette distribuzioni di chiavi (seed 42, generatore xoshiro256\*\* identico a `common.hpp`;
+`r` indica un'estrazione a 64 bit del generatore):
 
-- `uniform`: chiavi random a 64 bit (caso "medio", realistico).
-- `sequential`: `k=i` (surrogate key / row-id contigui).
-- `strided_pow2`: `k=i·4096` (offset allineati, id con tag nei bit bassi).
-- `low16_zero`: entropia solo nei bit alti, 16 bit bassi a 0.
-- `high32_only`: entropia SOLO nei 32 bit alti (32 bit bassi a 0).
-- `dup_1000`: universo di 1000 chiavi distinte (molti duplicati; = `key_space=1000` del report).
+| dist | generazione | che cosa modella |
+|---|---|---|
+| `uniform` | `k = r` | chiavi random a 64 bit: il caso medio, ed è il default del progetto (`key_space=0`) |
+| `sequential` | `k = i` | surrogate key / row-id contigui |
+| `strided_pow2` | `k = i·4096` | offset allineati a pagina, id con tag nei bit bassi |
+| `low16_zero` | `k = r·2¹⁶` | entropia nei 48 bit alti, 16 bit bassi a 0 |
+| `high32_only` | `k = r·2³²` | entropia nei soli 32 bit alti, 32 bit bassi a 0 |
+| `dup_1000` | `k = r mod 1000` | universo piccolo: 1000 valori distinti **contigui** (0…999), uniformi, ciascuno replicato ~10⁵ volte (N=10⁸). È il `key_space=1000` del report |
+| `dup_struct` | `k = (r mod 1000)·65536` | gli **stessi** 1000 valori con le **stesse** molteplicità, riscalati di 2¹⁶ |
+
+Le ultime due sono un A/B controllato. Il generatore è riavviato con lo stesso seme per
+ogni distribuzione e consuma un'estrazione per chiave, quindi `dup_struct` è chiave per
+chiave `dup_1000` shiftata di 16 bit: stesso supporto (cardinalità 1000), stessa
+molteplicità per valore, stessa statistica. Cambia solo la **codifica in bit** dei valori.
+Ogni differenza fra le due colonne è quindi imputabile alla sensibilità della hash al
+layout dei bit, non alla distribuzione delle chiavi.
 
 **Metriche** per ogni coppia (dist, hash): `max/atteso` (1 = ideale), CoV, Gini,
 chi²/dof (≈1 se uniforme), entropia normalizzata H/log₂P (1 = ideale), n. partizioni vuote.
@@ -60,43 +71,66 @@ bilanciamento è una proprietà della matematica della hash, non della macchina.
 
 "256" = tutte le 10⁸ chiavi in una sola partizione (255 vuote, Gini 0.996).
 
-## Lettura dei risultati (come difenderlo all'orale)
+## Lettura dei risultati
 
 1. **Su chiavi uniformi vanno bene tutte** (fib32 = 1.005, riproduce l'1.005 del
-   report). Onestà: `mod` non è peggiore su dati random. La differenza non è lì.
-2. **Bit alti vs bassi (perché `>> shift`)**: su `strided`, prendere i bit bassi
-   del prodotto (`fib32_lowbits`) sbanda a 2.68 con 160 partizioni vuote; prendere
-   i bit alti (`fib32`) resta a 1.000. I bit alti del prodotto hanno più entropia.
-3. **XOR-fold (perché mescolare hi in lo)**: su `high32_only`, senza folding
-   (`mult32_nofold`) si collassa (256×); con il folding `fib32` resta a 1.004.
-4. **Perché non `mod` naive**: `mod` = ultimi log₂P bit della chiave. Collassa ogni
-   volta che quei bit mancano di entropia (offset allineati, id con tag, chiavi con
-   struttura: casi comunissimi). Su tre distribuzioni su sei va a 256×.
-5. **32 vs 64 bit non cambia la QUALITÀ**: `fib32` e `fib64` sono identici ovunque.
-   Quindi i 32 bit non sacrificano nulla in distribuzione; la scelta dei 32 bit è
-   motivata solo dal SIMD (vpmulld nativo vs decomposizione vpmuludq), non dalla
-   bontà della hash. Vedi esperimento 04 (counterfactual sui tempi).
-6. **`dup_1000` riproduce `dist_ratio=1.2827`** del `cpu_results.csv` consegnato →
-   il generatore/harness è fedele al codice del progetto. Qui `mod` è pure un filo
-   migliore (1.029 vs 1.283): con poche chiavi distinte fib32 le sparpaglia creando
-   un lieve sbilanciamento, ma nessuna collassa (H/log₂P ≈ 0.999).
-7. **Il "vantaggio" di `mod` in dup è fragile (dup_1000 vs dup_struct)**: la vittoria di
-   `mod` (1.03) su `dup_1000` esiste solo perché i 1000 valori distinti sono contigui
-   (0…999), caso gentile per i bit bassi. Con gli **stessi** 1000 valori distinti e la
-   stessa densità di duplicati ma **strutturati** (`·65536`), `mod` **collassa a 256×**
-   mentre `fib32` resta **1.28** invariata. Cioè: `mod` scommette sulla forma dei dati,
-   `fib32` garantisce indipendentemente da essa. In un hash join non controlli le chiavi
-   → prendi la garanzia.
+   report). `mod` non è peggiore su dati random: la differenza non è lì.
+2. **Bit alti contro bit bassi (il ruolo dello `>> shift`)**: su `strided`, prendere i
+   bit bassi del prodotto (`fib32_lowbits`) porta a 2.68 con 160 partizioni vuote;
+   prendere i bit alti (`fib32`) resta a 1.000. Nella moltiplicazione modulare il bit
+   *j* del prodotto dipende solo dai bit ≤ *j* degli operandi: i bit bassi del prodotto
+   ereditano l'entropia dei soli bit bassi della chiave, i bit alti la raccolgono da
+   tutta la chiave.
+3. **XOR-fold (il ruolo del mescolamento di hi in lo)**: su `high32_only` la variante
+   senza folding (`mult32_nofold`) collassa a 256×, perché moltiplica i soli 32 bit
+   bassi, che qui sono a zero. Con il folding `fib32` resta a 1.004.
+4. **Perché non `mod` naive**: `mod` seleziona gli ultimi log₂P bit della chiave, quindi
+   collassa ogni volta che quei bit non portano entropia. Accade su 4 distribuzioni su 7
+   (`strided`, `low16_zero`, `high32_only`, `dup_struct`): offset allineati, id con tag,
+   valori riscalati per una potenza di due. Sono forme comuni in dati reali.
+5. **La larghezza a 32 bit non entra nella qualità**: `fib32` e `fib64` coincidono su
+   tutte e sette le distribuzioni (worst case 1.283 contro 1.286). La qualità è decisa
+   dai tre ingredienti (fold, moltiplicazione, bit alti), non dalla larghezza. Quindi la
+   scelta dei 32 bit non è arbitrabile con questo esperimento: è imposta da AVX2, che ha
+   la moltiplicazione intera 32×32 nativa (`vpmulld`, 8 corsie) e non la 64×64
+   (`vpmullq` esiste solo in AVX-512), che va scomposta in 3 `vpmuludq` su 4 corsie.
+   L'esperimento 04 misura la conseguenza: la SIMD accelera la hash a 32 bit (1.32×) e
+   non accelera quella a 64 bit (0.98×).
+6. **`dup_1000` riproduce `dist_ratio=1.2827`** del `cpu_results.csv` consegnato: il
+   generatore dell'harness è fedele al codice del progetto.
+7. **Il 1.28 di fib32 su `dup` non è un difetto della hash, è quantizzazione.** Tutti i
+   duplicati di un valore finiscono per costruzione nella stessa partizione, quindi il
+   carico di una partizione è un multiplo intero di ~10⁵ chiavi. Con 1000 valori distinti
+   su P=256 la media è 3.906 valori per partizione, e almeno una ne riceve ≥4: **nessuna
+   hash può scendere sotto 4/3.906 = 1.024**. È un limite strutturale del rapporto
+   `key_space/P`, non una proprietà della funzione.
+8. **Il vantaggio di `mod` su `dup_1000` è un artefatto della contiguità.** Su valori
+   0…999, `k & 255` è un round-robin esatto: 1000 = 3·256 + 232, quindi 232 partizioni
+   ricevono 4 valori e 24 ne ricevono 3 (verificato in `occupancy_N100M_P256.csv`).
+   `mod` centra esattamente il minimo strutturale (1.029 misurato contro 1.024 teorico;
+   lo scarto è la fluttuazione multinomiale dei conteggi per valore, ~0.3%). `fib32`
+   invece non sa che i valori sono contigui e li sparpaglia: l'occupazione diventa
+   {3 valori: 43 part., 4: 194, 5: 19}, il massimo è 5 valori → 5/3.906 = 1.28
+   (misurato 1.283). Il +25% di fib32 rispetto a `mod` è la fluttuazione statistica
+   dell'assegnazione pseudo-casuale (balls-into-bins), non un difetto della funzione.
+9. **Con la stessa distribuzione e un'altra codifica, il vantaggio si rovescia.** Su
+   `dup_struct` (stessi valori, stesse molteplicità, riscalati di 2¹⁶) tutte le chiavi
+   hanno i 16 bit bassi a zero: `k & 255 = 0` per ogni chiave, quindi `mod` mette le 10⁸
+   chiavi in partizione 0 e ne lascia 255 vuote. `fib32` resta a 1.284, invariata.
 
-**Tesi in una frase.** Fib32 si sceglie per **robustezza** (non collassa mai, su
-nessuna distribuzione) più **SIMD-friendliness**, pagando un costo trascurabile su
-dati uniformi. Non è "sempre meglio di mod": è robusta dove `mod` è fragile.
+**Tesi.** L'esperimento separa due decisioni indipendenti. La prima (famiglia `fib` invece
+di `mod`) è motivata dalla robustezza: `mod` dipende dalla codifica in bit dei valori e
+collassa su 4 distribuzioni su 7, `fib32` non collassa mai e nel caso peggiore paga 1.28,
+che è quantizzazione strutturale e non difetto della funzione. In un hash join la
+distribuzione delle chiavi non è nota a priori, quindi si sceglie la garanzia indipendente
+dai dati e non l'ottimo condizionato a una forma particolare. La seconda (32 bit invece di
+64) non è decidibile sulla qualità, che è identica, ed è motivata da AVX2 (esperimento 04).
 
 ## File
 
 - `hash_quality.cpp` — sorgente (riusa hash e generatore del progetto).
 - `results/summary_N100M_P256.csv` — metriche per (dist, hash).
 - `results/occupancy_N100M_P256.csv` — occupazione per-partizione (per gli istogrammi).
-- `plots/hash_matrix.png` — matrice hash × distribuzione (la più leggibile: verde/rosso).
+- `plots/hash_matrix.png` — matrice hash × distribuzione di `max/atteso`.
 - `plots/hash_imbalance_bars.png` — max/atteso per (dist × hash), scala log.
-- `plots/partition_occupancy.png` — occupazione delle 256 partizioni, fib32 vs mod.
+- `plots/partition_occupancy.png` — occupazione delle 256 partizioni, fib32 contro mod.

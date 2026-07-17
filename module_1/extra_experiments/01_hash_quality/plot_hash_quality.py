@@ -5,6 +5,7 @@ Legge results/summary_*.csv e results/occupancy_*.csv (prodotti da hash_quality.
 eseguito su node09) e genera in plots/:
   - hash_imbalance_bars.png : max/expected per (distribuzione x hash), scala log
   - partition_occupancy.png : occupazione per-partizione, casi di collasso vs fib32
+  - hash_matrix.png         : matrice hash x distribuzione di max/expected
 Uso: python3 plot_hash_quality.py
 """
 import os
@@ -34,9 +35,10 @@ DIST_ORDER = ["uniform", "sequential", "strided_pow2", "low16_zero", "high32_onl
               "dup_1000", "dup_struct"]
 DIST_LABEL = {
     "uniform": "uniform\n(random)", "sequential": "sequential\nk=i",
-    "strided_pow2": "strided\nk=i·4096", "low16_zero": "low16=0\n(entropia alta)",
-    "high32_only": "high32 only\n(bassi=0)", "dup_1000": "dup contigui\nks=1000",
-    "dup_struct": "dup struct\n1000·65536",
+    "strided_pow2": "strided\nk=i·4096", "low16_zero": "low16=0\n(16 bit bassi a 0)",
+    "high32_only": "high32 only\n(32 bit bassi a 0)",
+    "dup_1000": "dup contigui\n1000 valori 0…999",
+    "dup_struct": "dup strutturati\n1000 valori ·65536",
 }
 HASH_ORDER = ["fib32", "fib64", "mod", "fib32_lowbits", "mult32_nofold"]
 HASH_LABEL = {"fib32": "fib32 (report)", "fib64": "fib64 (a 64 bit)",
@@ -49,9 +51,10 @@ HASH_ROW = {"fib32": "fib32 (report)\nfold + mul + bit alti",
             "fib32_lowbits": "fib32 low-bits\nbit BASSI del prodotto",
             "mult32_nofold": "mult32 no-fold\nsenza XOR-fold"}
 DIST_COL = {"uniform": "uniform\n(random)", "sequential": "sequential\n(k=i)",
-            "strided_pow2": "strided\n(k=i·4096)", "low16_zero": "low16=0\n(bit bassi 0)",
-            "high32_only": "high32-only\n(bassi 0)", "dup_1000": "dup contigui\n(0…999)",
-            "dup_struct": "dup struct\n(·65536)"}
+            "strided_pow2": "strided\n(k=i·4096)", "low16_zero": "low16=0\n(16 bit a zero)",
+            "high32_only": "high32-only\n(32 bit a zero)",
+            "dup_1000": "dup contigui\n1000 valori\n0…999",
+            "dup_struct": "dup strutturati\n1000 valori\n·65536"}
 COL = {"fib32": "#1b7837", "fib64": "#66bd63", "mod": "#d73027",
        "fib32_lowbits": "#fdae61", "mult32_nofold": "#7b3294"}
 
@@ -80,11 +83,9 @@ ax.set_ylim(0.9, 1500)                   # headroom: le etichette "256×" non to
 ax.set_ylabel("max(count) / atteso   (scala log; 1 = perfettamente bilanciato)")
 ax.set_xticks(x)
 ax.set_xticklabels([DIST_LABEL[d] for d in DIST_ORDER], fontsize=9.5)
-ax.text(len(DIST_ORDER) - 0.55, 1.04, "ideale", fontsize=8, va="bottom", ha="right",
-        style="italic", alpha=0.8)
 ax.text(0.012, 0.94, "256× = tutte le 10⁸ chiavi in 1 sola partizione (255 vuote)",
         transform=ax.transAxes, fontsize=8.5, color="#7f0000", va="top")
-ax.set_title("Sbilanciamento delle partizioni per funzione hash e distribuzione delle chiavi  "
+ax.set_title("Sbilanciamento delle partizioni per funzione hash e distribuzione delle chiavi "
              "(N=10⁸, P=256, node09)", fontsize=12, pad=12)
 ax.legend(ncol=5, fontsize=9, loc="upper center", bbox_to_anchor=(0.5, -0.11),
           frameon=False)
@@ -166,10 +167,10 @@ plt.close(fig)
 from matplotlib.colors import LogNorm
 M = summary.pivot(index="hash", columns="dist", values="max_exp").reindex(
     index=HASH_ORDER, columns=DIST_ORDER)
-fig, ax = plt.subplots(figsize=(10.5, 5.6))
+fig, ax = plt.subplots(figsize=(12.0, 5.8))
 im = ax.imshow(M.values, cmap="RdYlGn_r", norm=LogNorm(vmin=1, vmax=256), aspect="auto")
 ax.set_xticks(range(len(DIST_ORDER)))
-ax.set_xticklabels([DIST_COL[d] for d in DIST_ORDER], fontsize=9.5)
+ax.set_xticklabels([DIST_COL[d] for d in DIST_ORDER], fontsize=8.5)
 ax.set_yticks(range(len(HASH_ORDER)))
 ax.set_yticklabels([HASH_ROW[h] for h in HASH_ORDER], fontsize=9.5)
 for i, h in enumerate(HASH_ORDER):
@@ -188,7 +189,7 @@ cbar = fig.colorbar(im, ax=ax, fraction=0.035, pad=0.02)
 cbar.set_label("max / atteso  (scala log)")
 cbar.set_ticks([1, 2, 10, 100, 256])
 cbar.set_ticklabels(["1\nideale", "2", "10", "100", "256\ncollasso"])
-ax.set_title("Sbilanciamento per funzione hash e distribuzione delle chiavi (verde bilanciato, rosso collasso)\n"
+ax.set_title("Sbilanciamento per funzione hash e distribuzione delle chiavi\n"
              "(riga = funzione hash, colonna = tipo di chiavi; N=10⁸, P=256, node09)",
              fontsize=12, pad=10)
 fig.tight_layout()

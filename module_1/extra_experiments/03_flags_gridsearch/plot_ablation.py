@@ -22,9 +22,9 @@ order = ["autovec (consegnato)", "-- tolgo vettorizzazione", "-- tolgo march=nat
          "-- O3 -> O2", "-- O3 -> O1", "++ aggiungo funroll-loops"]
 label = {"autovec (consegnato)": "autovec consegnato\n(riferimento)",
          "-- tolgo vettorizzazione": "− ftree-vectorize\n(tolgo vettorizzazione)",
-         "-- tolgo march=native": "− march=native",
-         "-- O3 -> O2": "O3 → O2",
-         "-- O3 -> O1": "O3 → O1",
+         "-- tolgo march=native": "− march=native\n(AVX2 resta acceso)",
+         "-- O3 -> O2": "O3 → O2\n(ftree-vectorize resta)",
+         "-- O3 -> O1": "O3 → O1\n(ftree-vectorize resta)",
          "++ aggiungo funroll-loops": "+ funroll-loops"}
 df = df.set_index("config").reindex(order).reset_index()
 
@@ -55,6 +55,9 @@ ax.set_title("Ablation dei flag di compilazione (node09, N=10⁸, P=256)\n"
              "contano solo −ftree-vectorize (−31%) e −march=native (−15%); il resto è neutro",
              fontsize=11)
 ax.grid(axis="x", ls=":", alpha=0.4)
+ax.text(0.0, -0.155,
+        "base: -O3 -march=native -mavx2 -mfma -ftree-vectorize; ogni riga cambia una sola voce rispetto alla base",
+        transform=ax.transAxes, fontsize=8.5, color="#444444")
 fig.tight_layout()
 fig.savefig(os.path.join(OUT, "flags_ablation.png"), dpi=150, bbox_inches="tight")
 print("OK ->", os.path.join(OUT, "flags_ablation.png"))

@@ -20,7 +20,7 @@ python3 plot_flags.py   # in locale
 | O1 | 906 | register allocation, niente vettorizzazione |
 | O2 | 912 | GCC a O2 NON auto-vettorizza i loop di default |
 | O3 | 1216 | **O3 attiva `-ftree-vectorize`: +33%** (vettori generici/SSE) |
-| O3 + march=native | 1317 | AVX2 a 256 bit + tuning Zen1: **+8%** su O3 |
+| O3 + march=native | 1317 | ISA e tuning del nodo: **+8%** su O3 (il contributo è il tuning, punto 2) |
 | O3 + march + novec (baseline) | 908 | `-fno-tree-vectorize` riporta al livello scalare |
 | O3 + march + vec (autovec) | 1325 | configurazione consegnata |
 | O3 + march + vec + unroll | 1339 | `-funroll-loops`: **+1%** marginale |
@@ -31,9 +31,20 @@ python3 plot_flags.py   # in locale
 1. **Il salto O2 → O3 (912 → 1216, +33%) è esattamente la vettorizzazione**: a O2 GCC
    non auto-vettorizza i loop, a O3 sì (`-ftree-vectorize` è on da O3). Questa è la prova
    isolata che lo speedup dell'autovec viene dalla vettorizzazione.
-2. **`-march=native` vale +8%** (1216 → 1317): senza, GCC vettorizza a 128 bit (SSE
-   generico); con, usa i 256 bit di AVX2 e il tuning per Zen1. È il motivo per cui il
-   Makefile lo mette.
+2. **`-march=native` vale +8%** (1216 → 1317), ma il meccanismo non è l'ampiezza dei
+   vettori. Il confronto con l'ablation lo mostra: abilitare AVX2 **senza** `-march`
+   (`-O3 -mavx2 -mfma -ftree-vectorize` → 1114) sta **sotto** `-O3` puro (1216), che
+   vettorizza con la sola SSE2 del baseline x86-64. L'unica variabile fra i due è
+   `-mavx2 -mfma`, quindi l'ISA più larga da sola **costa** l'8%, e il guadagno di
+   `-march=native` va attribuito al tuning per la microarchitettura (Zen1). Le due misure
+   sono confrontabili: stesso sorgente, stesso nodo, stessi N/P/seed/ripetizioni, e la
+   banda di riproducibilità è ~1% (autovec misurato 1324.6 nella grid e 1312.5
+   nell'ablation), mentre lo scarto qui è dell'8%.
+   *Ipotesi non verificata in questo esperimento:* su Zen1 le istruzioni vettoriali a 256
+   bit sono eseguite come due micro-op da 128 bit, e il tuning `znver1` di GCC preferisce
+   di conseguenza vettori a 128 bit; senza `-march` il tuning generico userebbe i 256 bit
+   pagandone lo split. Servirebbe l'ispezione dell'assembly emesso sul nodo (`ymm` contro
+   `xmm`) per confermarlo.
 3. **baseline vs autovec = 908 vs 1325 = 1.46×**: la baseline è "O3+march con
    vettorizzazione OFF"; tutto il guadagno è attribuibile alla sola vettorizzazione.
    Coincide con l'1.43–1.46× del report.

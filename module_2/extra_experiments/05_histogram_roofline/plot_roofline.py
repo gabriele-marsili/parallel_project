@@ -40,20 +40,39 @@ read_hi = bw[bw["kernel"] == "read"].sort_values("threads").iloc[-1]
 fig, ax = plt.subplots(figsize=(9.5, 5.6))
 OI = np.logspace(-2.2, 1.2, 200)
 mem_roof = read_peak_bytes * OI / 1e9  # Gop/s = (byte/s)*(op/byte)
-# tetto di calcolo (indicativo): ~ picco op intere scalari aggregato, stimato da read a bassa OI plateau
-comp_roof = max(read_hi["Gop_s"], histo_gops) * 4  # solo per disegnare la spalla; non un claim preciso
-ax.plot(OI, np.minimum(mem_roof, comp_roof), "k-", lw=2, label="roofline (tetto = banda x OI)")
+
+# Il traffico DRAM (8 B/record) e' fisso; il numero di operazioni contate e' una convenzione.
+# Cambiare convenzione muove il punto lungo la diagonale della banda, NON verso il tetto di calcolo:
+# I e throughput scalano insieme (throughput = banda x I resta costante). -> memory-bound robusto.
+OPS_HI = 5             # hash: >>32, xor, *A32, >>shift, + increment
+histo_oi_hi = OPS_HI / 8.0     # ~0.625: contando anche le op della hash
+histo_gops_hi = histo_gops * OPS_HI
+
+# tetto di calcolo: NON misurato (il picco di op intere del nodo e' molto piu' alto di questi
+# throughput). Lo disegno indicativo/tratteggiato con ginocchio ben oltre I=0.6, cosi' entrambe
+# le convenzioni (0.125 e 0.6) cadono sul tratto memory-bound. Non e' un claim quantitativo.
+knee_I = 2.0
+comp_roof = read_peak_bytes * knee_I / 1e9
+ax.plot(OI, mem_roof, "k-", lw=2, label="tetto di banda (= banda x I)")
+ax.plot(OI, np.minimum(mem_roof, comp_roof), color="0.55", ls="--", lw=1.4,
+        label="tetto di calcolo (indicativo, non misurato)")
+
 ax.axvline(histo_oi, ls="--", color="#EF5350", lw=1.4)
 ax.plot([histo_oi], [histo_gops], "o", color="#EF5350", markersize=13, zorder=5,
-        label=f"histogram misurato: I=0.125, {histo_gops:.2f} Gop/s")
-ax.annotate("I = 1 op / 8 byte = 0.125\n(1 chiave letta = 8 B,\n1 hash+increment)",
-            xy=(histo_oi, histo_gops), xytext=(histo_oi*1.4, histo_gops*0.35),
-            fontsize=9, color="#7f0000",
+        label=f"histogram, conv. 1 op/record: I=0.125, {histo_gops:.2f} Gop/s")
+ax.plot([histo_oi_hi], [histo_gops_hi], "s", color="#EF5350", markersize=11, zorder=5,
+        markerfacecolor="none", markeredgewidth=2,
+        label=f"histogram, conv. ~5 op/record: I={histo_oi_hi:.2f}, {histo_gops_hi:.2f} Gop/s")
+# linea che collega i due punti: mostra che scivolano sulla stessa diagonale della banda
+ax.plot([histo_oi, histo_oi_hi], [histo_gops, histo_gops_hi], ":", color="#EF5350", lw=1.4, zorder=4)
+ax.annotate("I = op / 8 byte\n(8 B letti/record e' FISSO;\nle op sono una convenzione:\n1 -> 0.125, ~5 -> ~0.6)\nil punto scorre sulla diagonale\ndella banda, non verso il calcolo",
+            xy=(histo_oi, histo_gops), xytext=(histo_oi*1.5, histo_gops*0.28),
+            fontsize=8.5, color="#7f0000",
             arrowprops=dict(arrowstyle="->", color="#7f0000"))
 ax.set_xscale("log"); ax.set_yscale("log")
 ax.set_xlabel("intensita' operazionale  I  (op utili / byte, scala log)")
 ax.set_ylabel("throughput (Gop/s, scala log)")
-ax.set_title("Roofline: con I=0.125 l'histogram è nella regione memory-bound (tetto = banda)")
+ax.set_title("Roofline: l'histogram è memory-bound per ogni convenzione di conteggio (0.125 e ~0.6 stanno sulla diagonale)")
 ax.legend(fontsize=9.5, loc="lower right"); ax.grid(ls=":", alpha=0.4, which="both"); ax.set_axisbelow(True)
 fig.tight_layout(); fig.savefig(os.path.join(OUT, "roofline_histogram.png"), dpi=150, bbox_inches="tight")
 plt.close(fig)

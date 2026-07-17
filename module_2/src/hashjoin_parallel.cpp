@@ -1,6 +1,8 @@
 // Parallel implementation with C++ threads
 
 /* Parallelization strategy:
+ * (Spiegazione completa delle fasi + complessità work/span in utils/GUIDA_SVILUPPO_MODULO2.pdf, sez. 5-6)
+ *
 
 • Histogram: Data-parallel MAP with thread-local histograms + sequential merge.
 Block distribution
@@ -49,6 +51,10 @@ in the extended Amdahl's model with linear overhead term).
 
 // Thread count heuristic:
 // k = min(kmax, ⌊min(N R, N S) / Tmin⌋)
+// Guardia LINEARE conservativa. L'ottimo vero è a radice: minimizzando
+// T(k) = (N/k)*cs + (k*P)*cm  ->  k_opt ~ sqrt(N/P) (colla merge/offset = O(k*P)).
+// Tmin=8192 e' un proxy tondo dell'ordine di grandezza del crossover: sui nostri N
+// enormi non morde mai (satura a kmax). Derivazione completa in utils/GUIDA_SVILUPPO_MODULO2.pdf (sez. 6).
 // Avoids oversubscription and prevents launching threads for tiny workloads.
 // min_items_per_thread: below this, a single thread is more efficient than
 // paying the thread coordination overhead.

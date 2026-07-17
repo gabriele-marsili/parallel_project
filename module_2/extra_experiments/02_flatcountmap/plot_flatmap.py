@@ -62,25 +62,117 @@ ax.legend(fontsize=10); ax.grid(ls=":", alpha=0.45); ax.set_axisbelow(True)
 fig.tight_layout(); fig.savefig(os.path.join(OUT, "flatmap_cache.png"), dpi=150, bbox_inches="tight")
 plt.close(fig)
 
-# ── Fig 2b: load factor — probe vs alpha (patologia del linear probing) ──
+# ── Fig 2b: load factor — TRE FIGURE SEPARATE, una unita' di misura ciascuna ──
+# NIENTE assi gemelli: sovrapporre ns e probe su due scale indipendenti rende "sopra"/"sotto"
+# un artefatto della scala scelta, non un fatto. Ogni figura ha la sua unita' e, nei documenti,
+# la sua didascalia.
 lf = pd.read_csv(os.path.join(RES, "loadfactor.csv")).sort_values("alpha_actual")
-fig, ax = plt.subplots(figsize=(9.5, 5.4))
-a = lf["alpha_actual"].values; pns = lf["probe_ns_per_key"].values
-ax.set_xlim(0, 1.02); ax.set_ylim(0, max(pns) * 1.12)
-ymax = ax.get_ylim()[1]
-ax.plot(a, pns, "o-", color="#1565C0", lw=2.2, markersize=8)
-ax.axvline(0.5, ls=":", color="#2E7D32", lw=1.8)
-ax.axvline(1.0, ls=":", color="#D32F2F", lw=1.8)
-ax.text(0.49, ymax * 0.55, "x2: dimensionamento scelto\n(riempimento al piu' 50%)", rotation=90,
-        fontsize=9, color="#2E7D32", va="center", ha="right")
-ax.text(0.99, ymax * 0.55, "x1: riempimento fino al 100%", rotation=90,
-        fontsize=9, color="#7f0000", va="center", ha="right")
-ax.set_xlabel("load factor: quanto e' piena la tabella (chiavi distinte / slot)")
-ax.set_ylabel("ns per probe (per chiave)")
-ax.set_title("Costo del probe al crescere del riempimento: piatto fino al 50%, esplode verso il 100%")
+pc = pd.read_csv(os.path.join(RES, "probe_count.csv")).sort_values("alpha")
+m = pd.merge(lf.assign(a=lf["alpha_actual"].round(2)), pc.assign(a=pc["alpha"].round(2)), on="a")
+assert len(m) == len(lf), f"merge loadfactor/probe_count incompleto: {len(m)} vs {len(lf)}"
+
+a = m["a"].values
+pns = m["probe_ns_per_key"].values
+cnt = m["probe_medio_contato"].values
+knu = m["probe_medio_knuth"].values
+ns_per_probe = pns / cnt
+
+# TRE FIGURE SEPARATE, non tre pannelli in una: cosi' ognuna ha la sua didascalia nel documento
+# (la formula di Knuth sta sotto al grafico che la riguarda, non in un blocco unico per tre).
+XLAB = "load factor: chiavi distinte / slot della tabella"
+
+# --- 1. probe per lookup: conteggio misurato contro il modello ---
+fig, ax = plt.subplots(figsize=(9.5, 5.3))
+agrid = np.linspace(0.05, 0.985, 300)
+ax.plot(agrid, 0.5 * (1 + 1 / (1 - agrid)), "-", color="#9E9E9E", lw=2.6,
+        label=r"modello di Knuth: $\frac{1}{2}\left(1 + \frac{1}{1-\alpha}\right)$  (ricerca con successo)")
+ax.plot(a, cnt, "o", color="#1565C0", markersize=10,
+        label="probe contati")
+ax.set_yscale("log"); ax.set_xlim(0, 1.02)
+ax.set_xlabel(XLAB)
+ax.set_ylabel("probe medi per lookup, cioe' per chiave cercata\n(scala logaritmica)")
+ax.set_title("Probe per lookup: conteggio misurato e modello di Knuth", fontsize=12.5, pad=10)
+ax.legend(fontsize=10, loc="upper left")
 ax.grid(ls=":", alpha=0.45); ax.set_axisbelow(True)
-fig.tight_layout(); fig.savefig(os.path.join(OUT, "flatmap_loadfactor.png"), dpi=150, bbox_inches="tight")
+fig.tight_layout(); fig.savefig(os.path.join(OUT, "flatmap_lf_probes.png"), dpi=150, bbox_inches="tight")
 plt.close(fig)
+
+# --- 2. costo del probe misurato ---
+fig, ax = plt.subplots(figsize=(9.5, 5.3))
+ax.plot(a, pns, "o-", color="#1565C0", lw=2.4, markersize=9)
+ax.set_xlim(0, 1.02); ax.set_ylim(0, max(pns) * 1.16)
+ymax = ax.get_ylim()[1]
+ax.axvline(0.5, ls=":", color="#2E7D32", lw=2.0)
+ax.axvline(1.0, ls=":", color="#D32F2F", lw=2.0)
+ax.annotate("tetto garantito dal sizing x2", xy=(0.49, ymax * 0.88),
+            xytext=(0.07, ymax * 0.88), fontsize=10, color="#2E7D32", va="center", ha="left",
+            arrowprops=dict(arrowstyle="->", color="#2E7D32", lw=1.4, shrinkA=30, shrinkB=2))
+ax.annotate("alpha = 1: tabella piena\n(limite del sizing x1)", xy=(0.995, ymax * 0.45),
+            xytext=(0.80, ymax * 0.45), fontsize=10, color="#7f0000", va="center", ha="right",
+            arrowprops=dict(arrowstyle="->", color="#7f0000", lw=1.4, shrinkB=2))
+ax.set_xlabel(XLAB)
+ax.set_ylabel("ns per lookup")
+ax.set_title("Costo del probe al variare del load factor (node02, tabella fissa a 2 MB)",
+             fontsize=12.5, pad=10)
+ax.grid(ls=":", alpha=0.45); ax.set_axisbelow(True)
+fig.tight_layout(); fig.savefig(os.path.join(OUT, "flatmap_lf_time.png"), dpi=150, bbox_inches="tight")
+plt.close(fig)
+
+# --- 3. PERCHE' il tempo non e' proporzionale ai probe: decomposizione a due costi ---
+# Una lookup = 1 accesso iniziale in una posizione casuale (costo C_first, dipende da quanto
+# footprint e' stato toccato, quindi da dove risiede la linea) + (probe-1) accessi di SEGUITO,
+# che cadono nello slot successivo: sequenziali e con l'indirizzo CALCOLATO ((h+1)&mask), non
+# letto da memoria, quindi senza la catena di dipendenze del pointer chasing (costo C_next).
+# NB: NON e' vero che stanno 'nella stessa cache line': ad alpha=0.98 la catena media e' 23.3
+# slot, cioe' ~5.8 linee. Il costo basso e' throughput-bound, non 'tutto in una linea'.
+#   ns(alpha) = C_first(alpha) + (probe(alpha) - 1) * C_next
+# C_next lo stimo dalla coda (0.90 -> 0.98), dove il footprint e' saturo e quindi C_first e'
+# costante: li' la pendenza ns/probe isola proprio il costo di un probe di seguito.
+C_next = (pns[-1] - pns[-3]) / (cnt[-1] - cnt[-3])   # alpha 0.90 -> 0.98
+C_first = pns - (cnt - 1) * C_next
+
+fig, ax = plt.subplots(figsize=(9.5, 5.3))
+ax.plot(a, C_first, "o-", color="#C62828", lw=2.4, markersize=9,
+        label="costo del 1' accesso della lookup (posizione casuale)")
+ax.axhline(C_next, ls="--", color="#1565C0", lw=2.2,
+           label=f"costo di ogni accesso SUCCESSIVO (sequenziale, indirizzo calcolato): {C_next:.2f} ns")
+ax.set_xlim(0, 1.02); ax.set_ylim(0, max(C_first) * 1.34)
+ymax = ax.get_ylim()[1]
+ax.annotate(f"solo {m['kb_toccati'].values[0]:.0f} KB della tabella toccati:\n"
+            f"la linea e' spesso ancora in cache vicina",
+            xy=(a[0], C_first[0] * 1.12), xytext=(0.05, ymax * 0.55),
+            fontsize=9.5, color="#616161", ha="left", va="center",
+            arrowprops=dict(arrowstyle="->", color="#9E9E9E", lw=1.2, shrinkB=4))
+ax.annotate(f"satura a ~{C_first[-1]:.0f} ns quando il footprint satura\n"
+            f"({m['kb_toccati'].values[-1]:.0f} KB = tutta la tabella): ordine di una latenza L3",
+            xy=(0.925, C_first[-1] * 1.04), xytext=(0.33, ymax * 0.90),
+            fontsize=9.5, color="#616161", ha="left", va="center",
+            arrowprops=dict(arrowstyle="->", color="#9E9E9E", lw=1.2, shrinkA=8, shrinkB=6))
+ax.set_xlabel(XLAB)
+# L'unita' qui e' il SINGOLO accesso, non la lookup: una lookup costa
+# C_primo + (probe-1)*C_seguito, ed e' il grafico precedente. Dirlo, altrimenti "ns" e' ambiguo.
+ax.set_ylabel("ns per singolo accesso a uno slot\n(non per lookup: una lookup ne fa 1 + (probe-1))")
+ax.set_title("Perche' il tempo non segue i probe: i due tipi di accesso costano molto diverso",
+             fontsize=12.5, pad=10)
+ax.legend(fontsize=9.5, loc="lower right", framealpha=0.95)
+ax.grid(ls=":", alpha=0.45); ax.set_axisbelow(True)
+fig.tight_layout(); fig.savefig(os.path.join(OUT, "flatmap_lf_cost.png"), dpi=150, bbox_inches="tight")
+plt.close(fig)
+
+print("\n=== Esp.2 decomposizione a due costi ===")
+print(f"  C_next (probe di seguito, stimato su alpha 0.90->0.98) = {C_next:.3f} ns")
+for i in range(len(a)):
+    print(f"  alpha={a[i]:.2f}  C_first={C_first[i]:6.2f} ns   KB toccati={m['kb_toccati'].values[i]:5.0f}")
+print(f"  controllo indipendente: alpha=0.95 NON e' usato nel fit -> C_first={C_first[-2]:.2f} ns, "
+      f"scarto {abs(C_first[-2]-C_first[-1])/C_first[-1]*100:.1f}% da alpha=0.98")
+
+print("=== Esp.2 load factor: probe contati vs Knuth ===")
+for i in range(len(a)):
+    print(f"  alpha={a[i]:.2f}  contati={cnt[i]:6.3f}  knuth={knu[i]:6.3f}  "
+          f"ns={pns[i]:5.2f}  ns/probe={ns_per_probe[i]:.2f}  KB toccati={m['kb_toccati'].values[i]:.0f}")
+_hi, _lo = 9, 7  # alpha=0.98 e alpha=0.90
+print(f"  costo marginale dei probe extra (alpha 0.90 -> 0.98): "
+      f"{(pns[_hi]-pns[_lo])/(cnt[_hi]-cnt[_lo]):.2f} ns per probe")
 
 # ── Fig 3: false sharing padded vs packed ──
 fs = pd.read_csv(os.path.join(RES, "false_sharing.csv"))

@@ -32,14 +32,32 @@ l'**end-to-end dipende dal posizionamento NUMA** del processo host su node09 (EP
 
 | binding host | H→D | D→H | totale | e2e (Mkeys/s) | vs baseline CPU |
 |---|---|---|---|---|---|
-| NUMA node 0 (GPU-far) | 108.4 ms | 64.3 ms | 174.2 ms | **574** | 0.63× (GPU perde) |
-| **NUMA node 4 (GPU-local)** | 63.3 ms | 35.2 ms | 99.9 ms | **1000** | 1.11× |
+| NUMA node 0 (GPU-far) | 108.6 ms | 64.0 ms | 174.1 ms | **574** | 0.63× (GPU perde) |
+| **NUMA node 4 (GPU-local)** | 63.2 ms | 35.3 ms | 100.0 ms | **1000** | 1.10× |
 | report (Tab. 2) | 63.2 ms | 32.3 ms | 97.0 ms | 1031 | 1.12× |
 
 Il **1031 del report è riproducibile solo bindando al dominio NUMA della GPU** (node 4):
-lì la banda PCIe è ~12.6 GB/s; sul socket lontano scende a ~7.4 GB/s e l'e2e crolla a
-574. Verificato con `numactl --cpunodebind=N --membind=N` (non ipotizzato): node 4 → 1000,
-node 5/6 → ~965, node 0 → 573. La topologia `nvidia-smi topo -m` dà `GPU0 NUMA affinity = 4`.
+lì la banda dei trasferimenti è ~12.6 GB/s; sul socket lontano scende a ~7.4 GB/s e l'e2e
+crolla a 574.
+
+Misurato con `run_numa.sh`, che esegue il kernel su **tutti gli 8 domini** con
+`numactl --cpunodebind=N --membind=N` e registra la topologia
+(`results/numa_node09.txt`, `results/cuda_numa_measured.csv`):
+
+| dominio host | 0 | 1 | 2 | 3 | **4** | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|---|
+| e2e (Mkeys/s) | 574 | 578 | 574 | 579 | **1000** | 965 | 965 | 966 |
+
+`nvidia-smi topo -m` dà `GPU0 NUMA Affinity = 4` (CPU affinity 1,9,17,25,33). La gerarchia
+misurata segue le `node distances` di `numactl --hardware`: distanza 10 dal dominio 4
+(1000), 16 dagli altri domini dello stesso socket (~965, −3.5%), 22–28 dal socket opposto
+(~575, −43%). Il kernel resta invariato in tutti i casi (~66 700 Mkeys/s, checksum
+identico), quindi la differenza è interamente nei trasferimenti.
+
+**Nota di metodo.** Il binding richiede che SLURM conceda le CPU di tutti i domini: con
+l'allocazione di default il task è confinato al cpuset del solo dominio 0 e `numactl`
+fallisce con `sched_setaffinity: Invalid argument` su ogni altro dominio. Serve
+`--exclusive --cpus-per-task=64 --cpu-bind=none`.
 
 ## Lettura (come difenderlo all'orale)
 
@@ -59,7 +77,11 @@ node 5/6 → ~965, node 0 → 573. La topologia `nvidia-smi topo -m` dà `GPU0 N
 ## File
 
 - `run_rerun.sh` — sweep CPU + CUDA su node09.
-- `results/rerun_node09.txt` — output grezzo.
-- `results/cpu_rerun.csv`, `results/cuda_numa.csv` — misure per i grafici.
+- `run_numa.sh` — sweep sugli 8 domini NUMA con `numactl` + topologia. Va lanciato con
+  `srun --partition=gpu-excl --nodelist=node09 --exclusive --cpus-per-task=64 --cpu-bind=none`.
+- `results/rerun_node09.txt` — output grezzo (run senza binding).
+- `results/numa_node09.txt` — output grezzo dello sweep NUMA, con `nvidia-smi topo -m` e
+  `numactl --hardware`.
+- `results/cpu_rerun.csv`, `results/cuda_numa.csv`, `results/cuda_numa_measured.csv` — misure per i grafici.
 - `plots/cpu_rerun_vs_N.png` — throughput CPU vs N (Tabella 1).
 - `plots/cuda_numa_breakdown.png` — breakdown CUDA e sensibilità NUMA.

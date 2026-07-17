@@ -9,6 +9,8 @@ echo "[build] su $(hostname)"
 g++ -O3 -std=c++20 -march=native -Wall -Wextra -I"$INC" flatmap_bench.cpp -o flatmap_bench
 g++ -O3 -std=c++20 -march=native -Wall -Wextra loadfactor_bench.cpp -o loadfactor_bench
 g++ -O3 -std=c++20 -march=native -pthread -Wall -Wextra false_sharing.cpp -o false_sharing
+# -O2 senza -march=native: qui non si misura tempo, si contano i probe (aritmetica deterministica).
+g++ -O2 -std=c++20 -Wall -Wextra probe_count_bench.cpp -o probe_count_bench
 
 SEED=42
 
@@ -37,10 +39,20 @@ done
 # --- load factor: probe vs alpha (patologia del linear probing vicino al 100%) ---
 CSV4="$OUT/loadfactor.csv"
 echo "alpha_target,alpha_actual,n_distinct,table_slots,probe_ns_per_key" > "$CSV4"
-echo "[lf] sweep load factor (D=100k distinti)"
-for A in 0.10 0.25 0.50 0.70 0.80 0.90 0.95 0.98; do
-  ./loadfactor_bench -distinct 100000 -alpha $A -reps 9 >> "$CSV4"
+# Tabella FISSA a 2^17 slot = 2 MB (default -tablelog 17), sempre dentro L3 (20 MB):
+# le chiavi distinte D = alpha * 131072 variano con alpha, la tabella no. Cosi' il degrado
+# misurato e' attribuibile al load factor e non alla residenza in cache (vedi flatmap_cache).
+echo "[lf] sweep load factor (tabella fissa 2 MB, D = alpha * 131072)"
+for A in 0.10 0.25 0.40 0.50 0.60 0.70 0.80 0.90 0.95 0.98; do
+  ./loadfactor_bench -alpha $A -reps 9 >> "$CSV4"
 done
+
+# --- probe CONTATI vs Knuth: il modello sbaglia i probe o il costo per probe? ---
+# Stesse alpha e stesse chiavi del sweep qui sopra, ma conta gli slot visitati invece di
+# cronometrarli. Deterministico: l'output e' identico su qualunque macchina (vedi il commento
+# in probe_count_bench.cpp), quindi e' confrontabile riga per riga con loadfactor.csv.
+echo "[pc] conteggio probe vs Knuth (deterministico, non e' una misura di tempo)"
+./probe_count_bench > "$OUT/probe_count.csv"
 
 # --- false sharing: accumulatori padded vs packed al crescere di k ---
 CSV3="$OUT/false_sharing.csv"

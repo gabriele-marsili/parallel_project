@@ -66,9 +66,9 @@ struct FlatCountMap {
 
     explicit FlatCountMap(std::size_t r_count) {
         std::size_t n = 1;
-        while (n < r_count * 2) n <<= 1;
+        while (n < r_count * 2) n <<= 1; //n power of 2 >= 2 * quantity of keys 
         slots.assign(n, Slot{});
-        mask  = static_cast<std::uint32_t>(n - 1);
+        mask  = static_cast<std::uint32_t>(n - 1); //mask = n-1 (=> seq of all 1 in last positions in binary)
         shift = 0; // unused — kept for struct alignment
     }
 
@@ -77,10 +77,11 @@ struct FlatCountMap {
     // so key & mask distributes them evenly without correlating
     // with the Fibonacci partitioning hash used in histogram/scatter.
     std::uint32_t slot_of(std::uint64_t key) const noexcept {
-        return static_cast<std::uint32_t>(key) & mask;
+        return static_cast<std::uint32_t>(key) & mask; // & bit a bit : keep only bits in low positions = k mod n 
     }
 
     // Build phase: count occurrences of each R key
+    // fa linear probing passando da uno slot al successivo finché non trova quello con chiave key a cui aumenta il count
     void increment(std::uint64_t key) noexcept {
         std::uint32_t h = slot_of(key);
         while (slots[h].key != ~0ULL && slots[h].key != key)
@@ -90,6 +91,7 @@ struct FlatCountMap {
     }
 
     // Probe phase: return count for key (0 if absent)
+    // linear probing per trovare la key, ritorna cnt o 0
     std::uint32_t count(std::uint64_t key) const noexcept {
         std::uint32_t h = slot_of(key);
         while (slots[h].key != ~0ULL && slots[h].key != key)

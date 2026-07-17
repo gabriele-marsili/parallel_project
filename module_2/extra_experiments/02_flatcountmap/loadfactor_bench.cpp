@@ -8,6 +8,13 @@
 //
 // Teoria (Knuth, linear probing, ricerca con successo): probe medio ~ 0.5*(1 + 1/(1-alpha)).
 //   alpha=0.5 -> 1.5    alpha=0.9 -> 5.5    alpha=0.98 -> 25.5
+// ATTENZIONE: il modello coglie la FORMA (monotona, accelera verso 1) ma NON i valori misurati.
+// Dividendo i ns misurati per i probe attesi si ottiene 3.4 / 7.0 / 4.0 / 1.7 ns-per-probe ad
+// alpha = 0.1 / 0.5 / 0.9 / 0.98: non e' costante (varia 4x, con un massimo ad alpha=0.6),
+// quindi il tempo NON e' proporzionale al numero di probe. Il modello conta i probe, non i cicli:
+// ignora il costo fisso per lookup e il fatto che le catene del linear probing sono contigue
+// (prefetchabili), quindi i probe marginali ad alpha alto costano molto meno di un accesso pieno.
+// Non usare questo bench per affermare accordo QUANTITATIVO con Knuth.
 //
 // Build: g++ -O3 -std=c++20 -march=native -Wall loadfactor_bench.cpp -o loadfactor_bench
 // Out (CSV): alpha_target,alpha_actual,n_distinct,table_slots,probe_ns_per_key

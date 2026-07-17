@@ -76,11 +76,14 @@ confrontate isolano, una alla volta, perché serve ogni ingrediente:
 - **fib32 low-bits**: come fib32 ma prende i bit BASSI del prodotto, isola "perché i bit alti".
 - **mult32 no-fold**: come fib32 ma senza XOR-fold, isola "perché il fold".
 
-Le 6 colonne sono tipi di chiavi in input: `uniform` (random), `sequential` (k=i, row-id),
+Le 7 colonne sono tipi di chiavi in input: `uniform` (random), `sequential` (k=i, row-id),
 `strided` (multipli di 4096, offset allineati), `low16=0` e `high32-only` (entropia solo nei
-bit alti), `dup` (1000 valori distinti). La matrice si legge a colpo d'occhio:
+bit alti), e le due `dup`, che hanno un universo di soli 1000 valori distinti (N=10⁸ chiavi,
+quindi ~10⁵ duplicati per valore): `dup contigui` sono i valori 0…999, `dup strutturati`
+sono gli stessi valori moltiplicati per 65536. Le due `dup` sono la stessa distribuzione
+(stesso seme, stessa sequenza, stesse molteplicità): cambia solo la codifica in bit.
 
-![Matrice hash x distribuzione: verde = bilanciato, rosso = collasso.](01_hash_quality/plots/hash_matrix.png)
+![Matrice hash x distribuzione delle chiavi.](01_hash_quality/plots/hash_matrix.png)
 
 **Risultato:** su chiavi **uniformi vanno bene tutte** (fib32 = 1.01). Su chiavi
 **strutturate** `mod` **collassa** (256×: tutte le 10⁸ chiavi in 1 partizione) ogni volta che
@@ -88,13 +91,28 @@ i bit bassi mancano di entropia; `fib32 low-bits` sbaglia su `strided`; `mult32 
 sbaglia su `high32-only`. Solo **fib32 e fib64 reggono ovunque**, con qualità identica.
 
 **Sul caso `dup` (dove `mod` sembra vincere):** nelle ultime due colonne della matrice,
-`mod` fa 1.03 su `dup contigui` (valori 0…999) ma **256× su `dup struct`** (stessi 1000
-valori distinti, stessa densità di duplicati, ma moltiplicati per 65536). `fib32` resta 1.28
-in entrambi. Cioè: il vantaggio di `mod` esiste solo perché i valori erano contigui; basta
-strutturarli e collassa. **Il default del progetto è comunque `uniform` (key_space=0), non
-dup.** **Tesi:** fib32 si sceglie per robustezza (worst case ~1.28 sempre, mai collasso) +
-SIMD, non perché "sempre meglio di mod". In un hash join non controlli le chiavi, quindi
-scegli la garanzia indipendente dalla distribuzione, non la scommessa.
+`mod` fa 1.03 su `dup contigui` (valori 0…999) ma **256× su `dup strutturati`** (stessi 1000
+valori distinti, stesse molteplicità, moltiplicati per 65536). `fib32` resta 1.28 in
+entrambi. Il vantaggio di `mod` esiste solo perché i valori erano contigui: basta
+riscalarli di 2¹⁶ e i log₂P bit bassi vanno a zero, quindi collassa. **Il default del
+progetto è comunque `uniform` (key_space=0), non dup.**
+
+Le due cifre e il loro meccanismo:
+
+- **Perché `mod` fa esattamente 1.03 sui dup contigui.** `k & 255` su 0…999 è un
+  round-robin: 1000 = 3·256 + 232, quindi 232 partizioni prendono 4 valori e 24 ne
+  prendono 3 → 4/3.906 = 1.024 (misurato 1.029, il resto è fluttuazione dei conteggi).
+- **Perché `fib32` fa 1.28 e non 1.00.** Non è un difetto della hash: i duplicati di un
+  valore vanno tutti nella stessa partizione, quindi con 1000 valori distinti su P=256 la
+  media è 3.906 valori per partizione e **nessuna hash può scendere sotto 4/3.906 =
+  1.024**. È il limite strutturale di `key_space/P`. fib32 sparpaglia senza sapere che i
+  valori sono contigui e arriva a 5 valori nella partizione più carica → 5/3.906 = 1.28.
+
+**Tesi (due decisioni separate):** (1) `fib` invece di `mod` per robustezza: `mod` collassa
+su 4 distribuzioni su 7, fib32 mai, e il suo worst case 1.28 è quantizzazione strutturale.
+In un hash join la distribuzione delle chiavi non è nota a priori, quindi la scelta cade
+sulla garanzia indipendente dai dati. (2) 32 bit invece di 64 **non** si decide qui, perché
+fib32 e fib64 hanno qualità identica: si decide su AVX2 (Esp. 4).
 
 Le stesse cifre in barre (magnitudine dei collassi) e lo zoom sull'occupazione delle 256
 partizioni in un caso di collasso:

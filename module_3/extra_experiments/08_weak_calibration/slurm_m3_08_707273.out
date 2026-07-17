@@ -1,0 +1,42 @@
+=== 08_weak_calibration su node01 ===
+[build] omp_ablation + alpha_probe (-march=native su node01)
+[1/2] weak end-to-end: 3 bracci x T x {loop,task}, uniform, reps=5
+   arm=A T=1 NR=2000000 max_key=5000000 P=128 done
+   arm=A T=2 NR=4000000 max_key=5000000 P=128 done
+   arm=A T=4 NR=8000000 max_key=5000000 P=128 done
+   arm=A T=8 NR=16000000 max_key=5000000 P=128 done
+   arm=A T=16 NR=32000000 max_key=5000000 P=128 done
+   arm=A T=32 NR=64000000 max_key=5000000 P=128 done
+   arm=B T=1 NR=2000000 max_key=5000000 P=128 done
+   arm=B T=2 NR=4000000 max_key=10000000 P=128 done
+   arm=B T=4 NR=8000000 max_key=20000000 P=128 done
+   arm=B T=8 NR=16000000 max_key=40000000 P=128 done
+   arm=B T=16 NR=32000000 max_key=80000000 P=128 done
+   arm=B T=32 NR=64000000 max_key=160000000 P=128 done
+   arm=C T=1 NR=2000000 max_key=5000000 P=128 done
+   arm=C T=2 NR=4000000 max_key=10000000 P=256 done
+   arm=C T=4 NR=8000000 max_key=20000000 P=512 done
+   arm=C T=8 NR=16000000 max_key=40000000 P=1024 done
+   arm=C T=16 NR=32000000 max_key=80000000 P=2048 done
+   arm=C T=32 NR=64000000 max_key=160000000 P=4096 done
+[2/2] alpha effettivo e ns per chiave (thread singolo, 8 partizioni)
+   arm=A T=1 done
+   arm=A T=2 done
+   arm=A T=4 done
+   arm=A T=8 done
+   arm=A T=16 done
+   arm=A T=32 done
+   arm=B T=1 done
+   arm=B T=2 done
+   arm=B T=4 done
+   arm=B T=8 done
+   arm=B T=16 done
+   arm=B T=32 done
+   arm=C T=1 done
+   arm=C T=2 done
+   arm=C T=4 done
+   arm=C T=8 done
+   arm=C T=16 done
+   arm=C T=32 done
+[ok] node01: results/weak_calib.csv  results/alpha_probe.csv
+ALL_DONE_MARKER

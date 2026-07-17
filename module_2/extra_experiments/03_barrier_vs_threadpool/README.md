@@ -14,15 +14,22 @@ bash run_sync.sh
 python3 plot_sync.py
 ```
 
-## Risultati (node02, NR=10M, P=128)
+## Risultati (node01, NR=10M, P=128)
 
 | thread | microsync barrier | microsync pool | pipeline barrier | pipeline pool |
 |---|---|---|---|---|
-| 1  | 37 ns    | 7525 ns  | 1096 ms | 1108 ms |
-| 8  | 8411 ns  | 8910 ns  | 202 ms  | 195 ms  |
-| 32 | 32311 ns | 36386 ns | 89.5 ms | 89.4 ms |
+| 1  | 37 ns    | 7369 ns  | 1097.6 ms | 1097.8 ms |
+| 8  | 7453 ns  | 9337 ns  | 201.3 ms  | 196.0 ms  |
+| 32 | 32407 ns | 36977 ns | 87.0 ms   | 86.5 ms   |
 
-La coda è **sempre** più cara sul sync (fino a 200x a 1 thread); end-to-end le due pareggiano.
+La coda è **sempre** più cara sul sync (198x a 1 thread, 1.1x a 32); end-to-end le due pareggiano.
+
+Riprodotto (job SLURM 703899, node01 esclusivo, `OMP_PROC_BIND=close OMP_PLACES=cores`): i
+valori coincidono con la prima esecuzione entro il rumore. Il divario e2e barrier-vs-pool resta
+sotto il ±7% su tutto il range (con il pool anzi un filo più veloce a diversi `T`, dentro il
+rumore), quindi non c'è una direzione stabile: le due strategie pareggiano davvero.
+`join_count = 199999829` identico su barrier e pool a ogni `T`: i due percorsi calcolano lo
+stesso risultato (la coda non salta lavoro).
 
 ## Lettura (come difenderlo)
 

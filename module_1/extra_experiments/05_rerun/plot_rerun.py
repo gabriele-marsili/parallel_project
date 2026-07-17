@@ -40,33 +40,44 @@ fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.8),
                                gridspec_kw={"width_ratios": [1.3, 1]})
 # stacked breakdown
 x = np.arange(len(cu))
-ax1.bar(x, cu["h2d_ms"], label="H→D (PCIe)", color="#4393c3")
+ax1.bar(x, cu["h2d_ms"], label="H→D (host to device)", color="#4393c3")
 ax1.bar(x, cu["kernel_ms"], bottom=cu["h2d_ms"], label="kernel", color="#1b7837")
 ax1.bar(x, cu["d2h_ms"], bottom=cu["h2d_ms"] + cu["kernel_ms"],
-        label="D→H (PCIe)", color="#92c5de")
+        label="D→H (device to host)", color="#92c5de")
 for i in range(len(cu)):
-    pcie = cu["h2d_ms"][i] + cu["d2h_ms"][i]
+    mov = cu["h2d_ms"][i] + cu["d2h_ms"][i]
     ax1.text(i, cu["total_ms"][i] + 3,
-             f"tot {cu['total_ms'][i]:.0f} ms\nPCIe {100*pcie/cu['total_ms'][i]:.0f}%",
+             f"tot {cu['total_ms'][i]:.0f} ms\ntrasferimenti {100*mov/cu['total_ms'][i]:.0f}%",
              ha="center", fontsize=8)
 ax1.set_xticks(x); ax1.set_xticklabels(cu["placement"], fontsize=9)
 ax1.set_ylabel("tempo (ms) a N=10⁸")
-ax1.set_title("Breakdown CUDA: il trasferimento PCIe domina (kernel 1.5 ms su circa 100-174 ms totali)",
+ax1.set_title("Breakdown CUDA: i trasferimenti dominano (kernel 1.5 ms su circa 100-174 ms totali)",
               fontsize=10)
 ax1.legend(fontsize=8); ax1.set_ylim(0, 200)
 
-# e2e vs CPU
-labels = list(cu["placement"]) + ["CPU baseline", "CPU autovec"]
-vals = list(cu["e2e_Mkeys_s"]) + [911.1, 1330.2]
-cols = ["#d6604d", "#1b7837", "#bdbdbd", "#7f7f7f"]
-ax2.bar(labels, vals, color=cols, edgecolor="black", linewidth=0.4)
-for i, v in enumerate(vals):
-    ax2.text(i, v + 15, f"{v:.0f}", ha="center", fontsize=9)
-ax2.axhline(911.1, ls="--", color="black", alpha=0.5)
+# e2e per dominio NUMA dell'host (tutti gli 8 domini misurati con numactl)
+nm = pd.read_csv(os.path.join(RES, "cuda_numa_measured.csv"))
+nm = nm[nm["e2e_Mkeys_s"] != "FAIL"]
+nm["e2e_Mkeys_s"] = nm["e2e_Mkeys_s"].astype(float)
+GPU_NODE = 4                      # nvidia-smi topo -m: GPU0 NUMA affinity = 4
+def col(n):
+    if n == GPU_NODE: return "#1b7837"        # dominio della GPU
+    if n >= 4:        return "#7fbc41"        # stesso socket della GPU
+    return "#d6604d"                          # socket opposto
+ax2.bar(nm["numa_node"], nm["e2e_Mkeys_s"],
+        color=[col(n) for n in nm["numa_node"]], edgecolor="black", linewidth=0.4)
+for n, v in zip(nm["numa_node"], nm["e2e_Mkeys_s"]):
+    ax2.text(n, v + 18, f"{v:.0f}", ha="center", fontsize=8.5)
+ax2.axhline(911.1, ls="--", color="black", alpha=0.6)
+ax2.text(-0.45, 925, "CPU baseline 911", fontsize=8, ha="left", va="bottom")
+ax2.axhline(1330.2, ls="--", color="#444444", alpha=0.6)
+ax2.text(7.4, 1344, "CPU autovec 1330", fontsize=8, ha="right", va="bottom")
+ax2.set_xlabel("dominio NUMA dell'host (numactl --cpunodebind=N --membind=N)")
 ax2.set_ylabel("throughput end-to-end (Mkeys/s)")
-ax2.set_title("GPU end-to-end vs CPU (N=10⁸)\nGPU-far più lenta della CPU, GPU-local circa pari",
-              fontsize=10)
-ax2.tick_params(axis="x", rotation=20, labelsize=8)
+ax2.set_title("End-to-end per dominio NUMA dell'host (N=10⁸)\n"
+              "verde scuro = dominio della GPU (4), verde = stesso socket, rosso = socket opposto",
+              fontsize=9.5)
+ax2.set_xticks(range(8))
 ax2.set_ylim(0, 1500)
 fig.tight_layout()
 fig.savefig(os.path.join(OUT, "cuda_numa_breakdown.png"), dpi=150, bbox_inches="tight")
